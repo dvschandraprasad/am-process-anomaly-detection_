@@ -78,7 +78,7 @@ def add_xct_surface(
     xct_column: str,
     layer_thickness_mm: float,
     cell_mm: float = 0.25,
-    xy_mm: float = 0.5,
+    xy_mm: float = 0.25,
     z_mm: float = 0.06,
 ) -> pd.DataFrame:
     """Add `xct_surface`: points where the XCT value is no good as a pore label.
@@ -87,8 +87,8 @@ def add_xct_surface(
     so its value is low and looks like a pore. In the real NIST data almost
     all low XCT values sit at such places (see docs/data_notes.md). A point is
     marked if
-      * side:   a cell within `xy_mm` in the same layer has no XCT value
-                (outside of the part, or a hole)
+      * side:   it is closer than `xy_mm` to a place in the same layer with no
+                XCT value (outside of the part, or a hole)
       * top / bottom: a cell next to it has no XCT value in one of the layers
                 within `z_mm` above or below it (top face, face over powder,
                 lowest layers of the XCT scan)
@@ -96,13 +96,21 @@ def add_xct_surface(
     Above the last loaded layer counts as air (so the last layers of a partial
     load are marked too). Below the first loaded layer counts as metal, like
     in `add_geometry`.
+
+    The side check works on cells of `cell_mm`. A cell "has XCT" if at least
+    one point in it has a value, so the real face can be anywhere inside the
+    last such cell. To be sure that every point closer than `xy_mm` to a face
+    is marked, the check looks one cell further. So points between `xy_mm`
+    and `xy_mm + cell_mm` from a face may be marked too, depending on where
+    the face lies in the grid.
     """
     points = points.copy()
     surface = np.ones(len(points), dtype=bool)
     if xct_column not in points:
         points["xct_surface"] = surface
         return points
-    r_xy = max(1, int(round(xy_mm / cell_mm)))
+    # cells to look at on each side: enough for xy_mm, plus one (see above)
+    r_xy = int(np.ceil(xy_mm / cell_mm - 1e-9)) + 1
     n_z = max(1, int(round(z_mm / layer_thickness_mm)))
 
     def all_cells(occ: np.ndarray, r: int) -> np.ndarray:

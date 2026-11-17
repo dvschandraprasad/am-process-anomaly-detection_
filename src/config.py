@@ -62,8 +62,9 @@ DEFAULTS: dict = {
             "k": 6.0,
             "ignore_edge": True,  # do not judge segments at the part surface
             # what counts as "at the surface" (see labels.add_xct_surface):
-            # closer than this to the outside in the same layer ...
-            "surface_xy_mm": 0.5,
+            # closer than this to the outside in the same layer (points up
+            # to one cell_mm further away can be marked too) ...
+            "surface_xy_mm": 0.25,
             # ... or closer than this to a top face, a face over powder, or
             # the lowest layers of the XCT scan
             "surface_z_mm": 0.06,
