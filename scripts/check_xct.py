@@ -8,7 +8,8 @@ threshold (median - k robust std), and where those points are:
     the same layer are left out), and
   * with the full surface rule (`xct_surface`: also top faces, faces over
     powder and the lowest layers of the XCT scan, see labels.add_xct_surface).
-It also saves a histogram of the XCT values to <output_dir>/figures/xct_histogram.png.
+It also prints how close the inner points come to the outer faces of the part,
+and saves a histogram of the XCT values to <output_dir>/figures/xct_histogram.png.
 Numbers from this script are in docs/data_notes.md.
 """
 from __future__ import annotations
@@ -65,6 +66,17 @@ def main() -> None:
                       f"top 2 layers, {(~bottom & ~top & pts['xct_surface'].to_numpy()[low]).sum():,} "
                       f"elsewhere at a surface (full rule), "
                       f"{(~pts['xct_surface'].to_numpy()[low]).sum():,} away from any surface")
+        # How far inner points stay from the outer faces: per layer and per 0.1 mm row,
+        # distance to the first and last point with an XCT value in that row.
+        h = pts.loc[has, ["layer", "x", "y", "xct_surface"]]
+        gaps = []
+        for ax, other in (("x", "y"), ("y", "x")):
+            row = [h["layer"], np.floor(h[other] / 0.1)]
+            lo, hi = h.groupby(row)[ax].transform("min"), h.groupby(row)[ax].transform("max")
+            inner_pts = ~h["xct_surface"]
+            gaps += [f"smallest {ax} {(h[ax] - lo)[inner_pts].min():.2f}",
+                     f"largest {ax} {(hi - h[ax])[inner_pts].min():.2f}"]
+        print("  full rule: closest inner point to the outer faces [mm]: " + ", ".join(gaps))
         hist[part] = (v[has & ~pts["is_edge"].to_numpy()], v[has & ~pts["xct_surface"].to_numpy()])
 
     import matplotlib
