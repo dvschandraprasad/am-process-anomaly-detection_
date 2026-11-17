@@ -31,6 +31,14 @@ def test_one_missing_frame_does_not_split_a_track():
     assert assign_tracks(points).max() == 0
 
 
+def test_rounded_time_with_repeated_values_does_not_split_a_track():
+    # like the NIST files above 1 s: time has 5 significant digits -> steps 200, 0, 200, 0
+    points = toy_points([12, 8])
+    points["time_us"] = 1_000_000.0 + np.round((points["time_us"] + 50.0) / 200.0) * 200.0
+    assert (np.diff(points["time_us"]) == 0).any()
+    assert np.bincount(assign_tracks(points)).tolist() == [12, 8]
+
+
 def test_windows_do_not_cross_tracks_or_overlap():
     points = toy_points([10, 9, 3])
     track = assign_tracks(points)

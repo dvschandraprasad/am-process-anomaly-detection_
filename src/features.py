@@ -44,6 +44,9 @@ def assign_tracks(points: pd.DataFrame, gap_factor: float = 2.5) -> np.ndarray:
     to the previous point is clearly longer than normal (the laser was off).
     In the NIST data frames are 100 us apart and the laser is off for about
     3000 us between tracks. One missing frame (200 us) does not start a new track.
+    Two frames with the SAME time do not start a new track either: the NIST
+    files store the time with 5 significant digits, so above 1 000 000 us
+    neighbouring frames often get the same time (steps of 200, 0, 200, 0 us).
     `points` must be sorted by part, layer and time.
     """
     n = len(points)
@@ -56,7 +59,7 @@ def assign_tracks(points: pd.DataFrame, gap_factor: float = 2.5) -> np.ndarray:
     same = (layer[1:] == layer[:-1]) & (part[1:] == part[:-1])
     usual = np.median(dt[same & (dt > 0)]) if np.any(same & (dt > 0)) else 1.0
     new_track = np.ones(n, dtype=bool)
-    new_track[1:] = ~same | (dt > gap_factor * usual) | (dt <= 0)
+    new_track[1:] = ~same | (dt > gap_factor * usual) | (dt < 0)
     return np.cumsum(new_track) - 1
 
 
