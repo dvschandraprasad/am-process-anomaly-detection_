@@ -123,11 +123,20 @@ def result_numbers(out_dir: Path) -> list[str]:
         f = s[f"flag_{m}"]
         lines.append(f"| {LABELS.get(m, m)} | " + " | ".join(f"{f[v].mean():.1%}" for v in bands.values()) + " |")
     lines.append("")
-    if first.any():
-        lines += ["Flagged segments in layer 1:", "", "| Method | Flagged in layer 1 |", "|---|---:|"]
-        lines += [f"| {LABELS.get(m, m)} | {int(s.loc[first, f'flag_{m}'].sum())} of {int(first.sum())} |"
-                  for m in methods]
-        lines.append("")
+    # layer 1 and the layer with the most alarms above it (what the layer heatmaps show)
+    above = s[~first]
+    lines += ["Flagged segments in layer 1, and in the layer with the most alarms above layer 1:", "",
+              "| Method | Layer 1 | Layer with the most alarms above layer 1 |", "|---|---:|---:|"]
+    for m in methods:
+        in_first = (f"{int(s.loc[first, f'flag_{m}'].sum())} of {int(first.sum())}" if first.any() else "-")
+        if len(above):
+            per = above.groupby("layer")[f"flag_{m}"].agg(["sum", "size"])
+            top = per["sum"].idxmax()
+            in_top = f"layer {int(top)}: {int(per.loc[top, 'sum'])} of {int(per.loc[top, 'size'])}"
+        else:
+            in_top = "-"
+        lines.append(f"| {LABELS.get(m, m)} | {in_first} | {in_top} |")
+    lines.append("")
 
     if "xct_valid" in s and s["xct_valid"].sum() > 10:
         v = s[s["xct_valid"]].copy()
