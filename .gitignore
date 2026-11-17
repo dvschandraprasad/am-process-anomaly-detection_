@@ -1,0 +1,15 @@
+# data that is too big for Git (download it with scripts/download_data.py)
+data/raw/
+data/processed/
+
+# outputs of runs (copy the figures you want to keep into docs/images/)
+results/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+*.egg-info/
+.DS_Store

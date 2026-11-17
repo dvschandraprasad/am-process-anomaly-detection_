@@ -1,0 +1,26 @@
+# Full run on the real NIST data: all four parts, split by part.
+# First:  python scripts/download_data.py --parts 1 2 3 4
+#         python scripts/inspect_data.py data/raw/part1
+data:
+  parts:
+    1: data/raw/part1
+    2: data/raw/part2
+    3: data/raw/part3
+    4: data/raw/part4
+  cache_dir: data/processed
+  layer_thickness_mm: 0.02   # 250 layers of 20 micrometres
+
+split:
+  mode: by_part
+  train: [1, 2]
+  val: [3]
+  test: [4]
+
+labels:
+  xct:
+    enabled: true
+    column: xct_m3
+    pore_is: low        # CHECK with inspect_data.py and the explore notebook
+    threshold: auto     # or a number you chose from the XCT histogram
+
+output_dir: results/nist_x4

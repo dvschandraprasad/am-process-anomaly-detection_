@@ -1,0 +1,24 @@
+# Quick start on the small FAKE sample in data/sample/.
+# The numbers this produces are only a check that the code runs.
+data:
+  parts:
+    1: data/sample/part1
+    2: data/sample/part2
+    3: data/sample/part3
+    4: data/sample/part4
+  cache_dir: null
+  layer_thickness_mm: 0.08   # the fake part has thick layers
+
+split:
+  mode: by_part
+  train: [1, 2]
+  val: [3]
+  test: [4]
+
+inject:
+  events_per_1000_points: 2.0   # the sample is tiny, so add more faults
+
+method_params:
+  autoencoder: {epochs: 40, batch_size: 64, lr: 0.002}
+
+output_dir: results/sample

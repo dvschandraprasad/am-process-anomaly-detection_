@@ -1,0 +1,26 @@
+# First run on the real NIST data with only ONE part downloaded.
+# First:  python scripts/download_data.py --parts 1
+#         python scripts/inspect_data.py data/raw/part1
+#
+# With one part we cannot split by part. Instead blocks of 10 layers go to
+# train, train, train, validation, test, and so on up the part. No layer is
+# shared, but neighbouring layers look alike, so this is an EASIER test than
+# splitting by part. Say so wherever you show these numbers.
+data:
+  parts:
+    1: data/raw/part1
+  cache_dir: data/processed
+  layer_thickness_mm: 0.02
+
+split:
+  mode: by_layer_blocks
+  block_layers: 10
+
+labels:
+  xct:
+    enabled: true
+    column: xct_m3
+    pore_is: low        # CHECK with inspect_data.py and the explore notebook
+    threshold: auto
+
+output_dir: results/nist_x4_one_part

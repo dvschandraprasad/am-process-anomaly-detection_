@@ -1,0 +1,21 @@
+# Small check on REAL data: part 1, layers 120 to 140 only (21 layer files).
+# This is the run shown in docs/first_real_data_check.md.
+#
+# Blocks of 2 layers go to train, train, train, validation, test, and so on.
+# No layer is shared, but neighbouring layers look alike, so this is an
+# EASIER test than splitting by part.
+data:
+  parts:
+    1: data/raw/part1
+  layers: [120, 140]
+  cache_dir: null
+  layer_thickness_mm: 0.02
+
+split:
+  mode: by_layer_blocks
+  block_layers: 2
+
+inject:
+  events_per_1000_points: 3.0   # few layers, so add more faults per layer
+
+output_dir: results/nist_x4_layers_120_140
