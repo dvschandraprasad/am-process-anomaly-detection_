@@ -1,6 +1,8 @@
 # Full run on the real NIST data: all four parts, split by part.
 # First:  python scripts/download_data.py --parts 1 2 3 4
 #         python scripts/inspect_data.py data/raw/part1
+#         python scripts/check_xct.py --config configs/nist_x4.yaml
+# Results of this run: README.md (Results) and docs/report.md.
 data:
   parts:
     1: data/raw/part1
@@ -20,7 +22,9 @@ labels:
   xct:
     enabled: true
     column: xct_m3
-    pore_is: low        # CHECK with inspect_data.py and the explore notebook
-    threshold: auto     # or a number you chose from the XCT histogram
+    pore_is: low        # checked: air at the part surface gives low values
+    threshold: auto     # checked with scripts/check_xct.py on all 4 parts (17 Nov 2026):
+                        # once all surfaces are left out, no point is below it.
+                        # See docs/data_notes.md.
 
 output_dir: results/nist_x4
