@@ -26,6 +26,8 @@ from src.config import load_config  # noqa: E402
 from src.labels import add_geometry, add_xct_surface, xct_threshold  # noqa: E402
 from src.load import load_part_cached  # noqa: E402
 
+VOXEL_MM = 0.03   # xct_m3: 3 x 3 x 3 mean of 10 um voxels
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -36,6 +38,9 @@ def main() -> None:
     col, k = xc["column"], xc["k"]
 
     hist = {}
+    split = cfg["split"]
+    train_parts = set(split["train"]) if split["mode"] == "by_part" else set(data["parts"])
+    train_inner = []
     for part, path in sorted(data["parts"].items()):
         pts = load_part_cached(path, part, data["cache_dir"], data["layers"], data["columns"],
                                data["layer_thickness_mm"])
@@ -62,10 +67,12 @@ def main() -> None:
                 layer = pts["layer"].to_numpy()[low]
                 bottom = layer <= first + 2
                 top = layer >= pts["layer"].max() - 1
+                marked = pts["xct_surface"].to_numpy()[low]
                 print(f"    of these: {bottom.sum():,} in the lowest 3 XCT layers, {top.sum():,} in the "
-                      f"top 2 layers, {(~bottom & ~top & pts['xct_surface'].to_numpy()[low]).sum():,} "
-                      f"elsewhere at a surface (full rule), "
-                      f"{(~pts['xct_surface'].to_numpy()[low]).sum():,} away from any surface")
+                      f"top 2 layers, {(~bottom & ~top & marked).sum():,} elsewhere and marked by the "
+                      f"full rule, {(~marked).sum():,} not marked by the full rule "
+                      "(the full rule was made after looking at these points, so this is not a "
+                      "separate check)")
         # How far inner points stay from the outer faces: per layer and per 0.1 mm row,
         # distance to the first and last point with an XCT value in that row.
         h = pts.loc[has, ["layer", "x", "y", "xct_surface"]]
@@ -77,7 +84,24 @@ def main() -> None:
             gaps += [f"smallest {ax} {(h[ax] - lo)[inner_pts].min():.2f}",
                      f"largest {ax} {(hi - h[ax])[inner_pts].min():.2f}"]
         print("  full rule: closest inner point to the outer faces [mm]: " + ", ".join(gaps))
+        # How much of each layer the XCT values cover: each frame reads XCT at one spot,
+        # and xct_m3 is a 3 x 3 x 3 mean of 10 um voxels, so about 0.03 x 0.03 mm.
+        cells = pts.loc[has, ["layer"]].assign(
+            ix=np.floor((pts.loc[has, "x"] - pts["x"].min()) / ov["cell_mm"]).astype(int),
+            iy=np.floor((pts.loc[has, "y"] - pts["y"].min()) / ov["cell_mm"]).astype(int))
+        area = cells.drop_duplicates().groupby("layer").size() * ov["cell_mm"] ** 2
+        seen = cells.groupby("layer").size() * VOXEL_MM ** 2
+        cover = (seen / area).median()
+        print(f"  share of the layer area where XCT is read (frames x {VOXEL_MM} x {VOXEL_MM} mm "
+              f"/ area of {ov['cell_mm']} mm cells with XCT), middle value over layers: {cover:.1%}")
         hist[part] = (v[has & ~pts["is_edge"].to_numpy()], v[has & ~pts["xct_surface"].to_numpy()])
+        if part in train_parts:
+            train_inner.append(v[has & ~pts["xct_surface"].to_numpy()])
+
+    # the threshold the pipeline uses: from the inner points of the training parts
+    pipe_thr = xct_threshold(np.concatenate(train_inner), xc["pore_is"], k) if train_inner else None
+    if pipe_thr is not None:
+        print(f"\nThreshold the pipeline uses (inner points of parts {sorted(train_parts)}): {pipe_thr:.4f}")
 
     import matplotlib
     matplotlib.use("Agg")
@@ -87,8 +111,9 @@ def main() -> None:
     for ax, (part, (old, new)) in zip(axes[0], hist.items()):
         ax.hist(old, bins=bins, color="#999999", label="old rule: side cells left out")
         ax.hist(new, bins=bins, color="#1f77b4", label="full rule: all surfaces left out")
-        thr = xct_threshold(new, xc["pore_is"], k)
-        ax.axvline(thr, color="#d62728", lw=1, ls="--", label=f"auto threshold, full rule ({thr:.3f})")
+        if pipe_thr is not None:
+            ax.axvline(pipe_thr, color="#d62728", lw=1, ls="--",
+                       label=f"pipeline threshold ({pipe_thr:.3f})")
         ax.set_yscale("log")
         ax.set_title(f"Part {part}")
         ax.set_xlabel(f"XCT value ({col})")
