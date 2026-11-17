@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from src.features import make_segments
-from src.inject import FAULT_TYPES, inject_faults
+from src.inject import FAULT_TYPES, inject_faults, signal_spreads
 from src.labels import add_geometry, add_xct_surface, label_segments, xct_threshold
 
 SIGNALS = ["mp_length_100", "mp_width_100", "mp_area_100"]
@@ -177,3 +177,21 @@ def test_injected_faults_reach_the_segment_table(dataset):
     df = label_segments(seg.df, min_fault_points=3)
     assert df["is_injected"].sum() >= len(events) * 0.5
     assert set(df.loc[df["is_injected"], "fault_id"]) <= set(events["fault_id"])
+
+
+def test_fault_size_comes_from_the_given_spread(dataset):
+    points = dataset[1]
+    spreads = signal_spreads(dataset[2], SIGNALS)
+    a, ev = inject_faults(points, SIGNALS, events_per_1000_points=3.0, seed=1, spreads=spreads)
+    # the same faults on a test part with twice the scatter: same absolute size
+    noisy = points.copy()
+    for s in SIGNALS:
+        noisy[s] = noisy[s].median() + 2.0 * (noisy[s] - noisy[s].median())
+    b, ev_b = inject_faults(noisy, SIGNALS, events_per_1000_points=3.0, seed=1, spreads=spreads)
+    pd.testing.assert_frame_equal(ev, ev_b)
+    spike = ev[ev["fault_type"] == "spike"].iloc[0]
+    rows = slice(int(spike["row_start"]), int(spike["row_end"]))
+    s = SIGNALS[-1]
+    added_a = (a[s] - points[s]).iloc[rows].to_numpy()
+    added_b = (b[s] - noisy[s]).iloc[rows].to_numpy()
+    np.testing.assert_allclose(added_a, added_b, rtol=1e-4, atol=1e-7)

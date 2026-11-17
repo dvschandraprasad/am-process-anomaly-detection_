@@ -23,7 +23,7 @@ from . import plots
 from .evaluate import (detection_metrics, event_detection, pr_curve, ranking_metrics,
                        summarise, threshold_for_frr, to_markdown)
 from .features import Segments, make_segments
-from .inject import inject_faults
+from .inject import inject_faults, signal_spreads
 from .labels import add_geometry, add_xct_surface, label_segments, xct_threshold
 from .load import load_part_cached
 from .models import HAS_TORCH, LABELS, RANDOM_METHODS, build_detector
@@ -146,8 +146,10 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
     seg_val = segment(sets["val"], cfg, xct_thr)
     seg_test = segment(sets["test"], cfg, xct_thr)
     inj = cfg["inject"]
+    # fault size in units of the normal spread of the TRAINING parts
+    spreads = signal_spreads(sets["train"], sg["signals"])
     inj_points, events = inject_faults(sets["test"], sg["signals"], inj["events_per_1000_points"],
-                                       inj["severity"], inj["types"], inj["seed"])
+                                       inj["severity"], inj["types"], inj["seed"], spreads=spreads)
     seg_inj = segment(inj_points, cfg, xct_thr)
     seg_inj.df = seg_inj.df.merge(events[["fault_id", "fault_type"]], on="fault_id", how="left")
 
@@ -351,7 +353,7 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
             "methods": methods,
             "n_segments": {"train": len(seg_train), "train_normal": int(train_ok.sum()),
                            "val": len(seg_val), "test": len(seg_test)},
-            "n_injected_faults": len(events), "config": cfg}
+            "n_injected_faults": len(events), "fault_size_unit_from_train": spreads, "config": cfg}
     (out_dir / "run_info.json").write_text(json.dumps(info, indent=2, default=str), encoding="utf-8")
 
     # ---------------------------------------------------------------- figures

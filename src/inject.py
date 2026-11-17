@@ -33,6 +33,28 @@ def robust_std(values: np.ndarray) -> float:
     return float(s) if s > 0 else float(np.std(values))
 
 
+def _regime(points: pd.DataFrame) -> np.ndarray:
+    """Machine setting of every point (commanded power rounded to 5 W)."""
+    if "cmd_power" in points.columns:
+        return (np.round(points["cmd_power"].to_numpy() / 5.0) * 5.0).astype(np.int64)
+    return np.zeros(len(points), dtype=np.int64)
+
+
+def signal_spreads(points: pd.DataFrame, signals: list[str]) -> dict:
+    """Normal spread (robust std) of every signal, per machine setting.
+
+    Returns {setting: {signal: spread}} plus the key "all" for all points
+    together. Compute it on TRAINING data and give it to `inject_faults`, so
+    that the size of the faults does not depend on the test data.
+    """
+    regime = _regime(points)
+    out: dict = {"all": {s: robust_std(points[s].to_numpy(dtype=np.float64)) for s in signals}}
+    for r in np.unique(regime):
+        m = regime == r
+        out[int(r)] = {s: robust_std(points[s].to_numpy(dtype=np.float64)[m]) for s in signals}
+    return out
+
+
 def inject_faults(
     points: pd.DataFrame,
     signals: list[str],
@@ -40,12 +62,17 @@ def inject_faults(
     severity: float = 1.0,
     types: tuple[str, ...] | list[str] = FAULT_TYPES,
     seed: int = 0,
+    spreads: dict | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return a copy of `points` with faults added, and a table of the faults.
 
     Only the columns in `signals` are changed. All signals of one fault move
     together (a bigger melt pool is longer, wider and has more area).
     New column `fault_id` is -1 for untouched points.
+
+    `spreads` (from `signal_spreads` on the training data) sets the size unit
+    of the faults. If it is None, the spread of `points` itself is used.
+    A machine setting that is not in `spreads` uses its "all" entry.
 
     The fault table has one row per fault:
     fault_id, fault_type, part, layer, row_start, row_end (end not included).
@@ -63,16 +90,16 @@ def inject_faults(
     lengths = np.diff(np.r_[first_rows, n])
 
     # Normal spread of every signal, per machine setting (contour / infill ...)
-    if "cmd_power" in out.columns:
-        regime = (np.round(out["cmd_power"].to_numpy() / 5.0) * 5.0).astype(np.int64)
-    else:
-        regime = np.zeros(n, dtype=np.int64)
+    if spreads is None:
+        spreads = signal_spreads(out, signals)
+    regime = _regime(out)
     values = {s: out[s].to_numpy(dtype=np.float64).copy() for s in signals}
     spread = {s: np.zeros(n) for s in signals}
     for r in np.unique(regime):
         m = regime == r
+        known = spreads.get(int(r), spreads["all"])
         for s in signals:
-            spread[s][m] = robust_std(values[s][m])
+            spread[s][m] = known[s]
 
     n_events = int(round(events_per_1000_points * n / 1000.0))
     kinds = [types[i % len(types)] for i in range(n_events)]
