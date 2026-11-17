@@ -41,9 +41,10 @@ DEFAULTS: dict = {
         "drop_first": 1,
         # signals that the detectors look at
         "signals": ["mp_length_100", "mp_width_100", "mp_area_100"],
-        # machine settings, used only as mean values (they say which
-        # "regime" a segment is in, e.g. contour or infill)
-        "context": ["cmd_power", "speed"],
+        # commanded machine settings, used only as mean values (they say which
+        # "regime" a segment is in, e.g. contour or infill). Both are known
+        # before printing; the measured speed ("speed") is not.
+        "context": ["cmd_power", "cmd_speed"],
         # also tell the detectors how much solid metal is under the laser
         # (known from the part shape). Limits are then set per region.
         "geometry_context": True,
