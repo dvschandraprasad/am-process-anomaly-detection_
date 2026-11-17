@@ -56,6 +56,21 @@ def frr_at_recall(y_true: np.ndarray, scores: np.ndarray, recall: float = 0.9) -
     return float(np.mean(scores[~y] >= thr))
 
 
+def recall_at_frr(y_true: np.ndarray, scores: np.ndarray, frr: float) -> float:
+    """Recall when the alarm level is set so that `frr` of the normal segments here are flagged.
+
+    The alarm level comes from the SAME data that is scored, so this is only
+    for comparing methods at one common false rejection rate, never for
+    reporting how a method would work on a new part.
+    """
+    y = np.asarray(y_true, dtype=bool)
+    scores = np.asarray(scores, dtype=np.float64)
+    if y.sum() == 0 or (~y).sum() == 0:
+        return float("nan")
+    thr = np.quantile(scores[~y], 1.0 - frr)
+    return float(np.mean(scores[y] > thr))
+
+
 def ranking_metrics(y_true: np.ndarray, scores: np.ndarray) -> dict:
     """Metrics that do not need a threshold."""
     y = np.asarray(y_true, dtype=bool)
@@ -101,12 +116,18 @@ def summarise(rows: pd.DataFrame, by: list[str], metrics: list[str]) -> pd.DataF
 
 
 def to_markdown(summary: pd.DataFrame, metrics: dict[str, str], label_col: str = "method",
-                labels: dict[str, str] | None = None, percent: tuple[str, ...] = ()) -> str:
-    """Make a Markdown table: one row per method, 'mean ± std' per metric."""
+                labels: dict[str, str] | None = None, percent: tuple[str, ...] = (),
+                rows: list[str] | None = None) -> str:
+    """Make a Markdown table: one row per method, 'mean ± std' per metric.
+
+    `rows`: only these methods (default: all).
+    """
     labels = labels or {}
     head = "| Method | " + " | ".join(metrics.values()) + " |"
     sep = "|---|" + "---:|" * len(metrics)
     lines = [head, sep]
+    if rows is not None:
+        summary = summary[summary[label_col].isin(rows)]
     for _, row in summary.iterrows():
         cells = []
         for m in metrics:

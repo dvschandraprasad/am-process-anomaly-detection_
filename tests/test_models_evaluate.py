@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from src.evaluate import (detection_metrics, event_detection, frr_at_recall, ranking_metrics,
-                          summarise, threshold_for_frr, to_markdown)
+                          recall_at_frr, summarise, threshold_for_frr, to_markdown)
 from src.models import HAS_TORCH, build_detector
 
 
@@ -95,6 +95,17 @@ def test_perfect_and_useless_scores():
     perfect = ranking_metrics(y, y.astype(float))
     assert perfect["pr_auc"] == 1.0 and perfect["frr_at_90_recall"] == 0.0
     assert frr_at_recall(y, np.zeros(100), 0.9) == 1.0   # must flag everything
+
+
+def test_recall_at_a_common_false_rejection_rate():
+    rng = np.random.default_rng(0)
+    normal, faulty = rng.normal(size=10000), rng.normal(size=1000)
+    faulty[:500] += 10.0                       # half the faults are easy
+    y = np.r_[np.zeros(10000), np.ones(1000)].astype(bool)
+    scores = np.r_[normal, faulty]
+    r1 = recall_at_frr(y, scores, 0.01)
+    assert 0.5 <= r1 < 0.53                    # the easy half, plus about 1 % of the rest
+    assert recall_at_frr(y, scores, 0.02) >= r1
 
 
 def test_event_detection_counts_caught_faults():

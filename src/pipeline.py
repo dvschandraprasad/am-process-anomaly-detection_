@@ -21,7 +21,7 @@ from scipy.stats import spearmanr
 
 from . import plots
 from .evaluate import (detection_metrics, event_detection, pr_curve, ranking_metrics,
-                       summarise, threshold_for_frr, to_markdown)
+                       recall_at_frr, summarise, threshold_for_frr, to_markdown)
 from .features import Segments, make_segments
 from .inject import inject_faults, signal_spreads
 from .labels import add_geometry, add_xct_surface, label_segments, xct_threshold
@@ -227,6 +227,9 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
                    **ranking_metrics(y_inj[inj_mask], s_inj[inj_mask]),
                    "frr_bulk": float(np.mean(flagged[normal & ~overhang_inj])) if (normal & ~overhang_inj).any() else np.nan,
                    "frr_overhang": float(np.mean(flagged[normal & overhang_inj])) if (normal & overhang_inj).any() else np.nan,
+                   # for comparison at one common operating point only (set on the test part)
+                   "recall_at_test_frr_1": recall_at_frr(y_inj[inj_mask], s_inj[inj_mask], 0.01),
+                   "recall_at_test_frr_2": recall_at_frr(y_inj[inj_mask], s_inj[inj_mask], 0.02),
                    "fit_s": fit_s, "score_ms_per_layer": score_ms}
             rows_inj.append(row)
             if len(events):
@@ -257,7 +260,8 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
     # ---------------------------------------------------------------- tables
     metrics_inj = pd.DataFrame(rows_inj)
     m_cols = ["precision", "recall", "f1", "frr", "frr_bulk", "frr_overhang", "pr_auc", "roc_auc",
-              "frr_at_90_recall", "fit_s", "score_ms_per_layer"]
+              "frr_at_90_recall", "recall_at_test_frr_1", "recall_at_test_frr_2",
+              "fit_s", "score_ms_per_layer"]
     summary_inj = summarise(metrics_inj, ["method"], m_cols)
     metrics_inj.to_csv(out_dir / "metrics_injected.csv", index=False)
     summary_inj.to_csv(out_dir / "summary_injected.csv", index=False)
@@ -277,6 +281,16 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
                        "frr_at_90_recall": "FRR at 90 % recall",
                        "score_ms_per_layer": "Run time [ms/layer]"},
                       labels=LABELS, percent=("frr", "frr_at_90_recall")), ""]
+
+    md += ["## Recall at the same false rejection rate (for comparison only)", "",
+           "Here the alarm level of every method is set on the TEST part, so that exactly "
+           "1 % or 2 % of its normal segments are flagged. This puts all methods at the same "
+           "operating point. It is not how a method would work on a new part (use the table "
+           "above for that).", "",
+           to_markdown(summary_inj, {"recall_at_test_frr_1": "Recall at 1 % FRR",
+                                     "recall_at_test_frr_2": "Recall at 2 % FRR"},
+                       labels=LABELS,
+                       rows=[m for m in summary_inj["method"] if m != "limits_3sigma"]), ""]
 
     fault_types = pd.DataFrame()
     if rows_fault:
