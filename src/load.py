@@ -177,7 +177,12 @@ def read_layer_file(opener: Callable[[], io.BufferedIOBase], columns: list[str])
         header=None,
         skiprows=1 if has_header else 0,
     )
-    df = df.dropna(axis=1, how="all")  # a trailing separator makes an empty column
+    # A trailing separator makes an extra, empty column at the end: drop it.
+    # Do NOT drop empty columns in general. In the NIST files some layers
+    # really have no value in some columns (NaN): no XCT in the lowest
+    # layers, no layer camera values in layer 1.
+    while df.shape[1] > len(columns) and df.iloc[:, -1].isna().all():
+        df = df.iloc[:, :-1]
     if df.shape[1] != len(columns):
         raise ValueError(
             f"Expected {len(columns)} columns but the file has {df.shape[1]}. "

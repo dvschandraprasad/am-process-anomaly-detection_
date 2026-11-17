@@ -64,6 +64,19 @@ def test_load_from_zip_and_layer_range(dataset, tmp_path):
     assert (points["part"] == 2).all()
 
 
+def test_empty_columns_are_kept_and_trailing_separator_is_dropped(tmp_path):
+    # Like the real NIST layer 1: the last 21 columns (layer camera, XCT) are NaN.
+    row = ",".join(["1", "77500"] + ["0.5"] * 17 + ["NaN"] * 21)
+    folder = tmp_path / "nan_cols"
+    folder.mkdir()
+    (folder / "L0001.csv").write_text(row + "\n" + row + "\n")
+    (folder / "L0002.csv").write_text(row + ",\n" + row + ",\n")  # trailing separator
+    points = load_part(folder)
+    assert len(points) == 4
+    assert points["xct_m3"].isna().all()
+    assert points["mp_area_100"].notna().all()
+
+
 def test_wrong_column_count_gives_a_clear_error(tmp_path):
     folder = tmp_path / "bad"
     folder.mkdir()

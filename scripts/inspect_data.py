@@ -48,7 +48,8 @@ def main() -> None:
 
     import io
     df = pd.read_csv(io.BytesIO(raw), sep=sep if sep else r"\s+", header=None, skiprows=1 if has_header else 0)
-    df = df.dropna(axis=1, how="all")
+    while df.shape[1] > len(COLUMNS) and df.iloc[:, -1].isna().all():
+        df = df.iloc[:, :-1]  # empty column from a trailing separator
     print(f"Rows:         {len(df):,}")
     print(f"Columns:      {df.shape[1]}  (the loader expects {len(COLUMNS)})")
 
