@@ -56,7 +56,8 @@ def test_full_run_writes_tables_figures_and_traceability(data_dir, tmp_path):
 
     for name in ("results.md", "metrics_injected.csv", "fault_types.csv", "traceability.csv",
                  "run_info.json", "figures/pr_curves.png", "figures/layer_heatmap.png",
-                 "figures/signal_examples.png", "figures/fault_types.png"):
+                 "figures/signal_examples.png", "figures/fault_types.png",
+                 "figures/layer_heatmap_layer1.png"):
         assert (out / name).exists(), name
 
     trace = pd.read_csv(out / "traceability.csv")
@@ -86,3 +87,4 @@ def test_sample_data_in_the_repo_runs(tmp_path):
     cfg.update(output_dir=str(tmp_path / "sample"), methods=["limits", "iforest"], seeds=[0])
     res = run(cfg, make_figures=False)
     assert len(res["summary_injected"]) == 3
+

@@ -358,15 +358,23 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
                                        "Injected faults: precision-recall curves (test set)")
             fig.savefig(fig_dir / "pr_curves.png"); plots.plt.close(fig)
 
-        # show the layer with the most alarms; prefer layers that also have an XCT pore
+        # Show the layer with the most alarms; prefer layers that also have an XCT pore.
+        # Layer 1 (the first layer on the build plate) is special: its melt pool is
+        # bigger, so it often has the most alarms. It gets its own figure, and the
+        # main figure shows the layer with the most alarms above it.
         per_layer = scores_test.groupby(["part", "layer"]).agg(
             alarms=(f"flag_{best}", "sum"), pores=("xct_defect", "sum"))
         per_layer["rank"] = per_layer["alarms"] + 1000 * ((per_layer["pores"] > 0) & (per_layer["alarms"] > 0))
-        part_id, layer_id = per_layer["rank"].idxmax()
-        fig = plots.plot_layer_heatmap(scores_test, int(layer_id), int(part_id),
-                                       alarm_ratio(scores_test[f"score_{best}"], best),
-                                       scores_test[f"flag_{best}"], best)
-        fig.savefig(fig_dir / "layer_heatmap.png"); plots.plt.close(fig)
+        is_first = per_layer.index.get_level_values("layer") == 1
+        pick = {"layer_heatmap.png": per_layer[~is_first] if (~is_first).any() else per_layer}
+        if is_first.any() and (~is_first).any():
+            pick["layer_heatmap_layer1.png"] = per_layer[is_first]
+        for name, table in pick.items():
+            part_id, layer_id = table["rank"].idxmax()
+            fig = plots.plot_layer_heatmap(scores_test, int(layer_id), int(part_id),
+                                           alarm_ratio(scores_test[f"score_{best}"], best),
+                                           scores_test[f"flag_{best}"], best)
+            fig.savefig(fig_dir / name); plots.plt.close(fig)
 
         if len(events):
             fig = plots.plot_signal_examples(inj_points, scores_inj, scores_inj[f"flag_{best}"], events,
