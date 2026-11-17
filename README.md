@@ -79,7 +79,7 @@ Column list and open questions: [`docs/data_notes.md`](docs/data_notes.md).
 | XCT pores | The X-ray CT value at the segment says "pore". Points near any surface of the part are left out (closer than 0.25 mm to a side face, on some faces up to 0.5 mm, or closer than 0.06 mm to a top or bottom face), because there XCT mixes metal and air. | Check against real defects |
 | Overhang region | Less than 0.5 mm solid metal below the segment | Shows where false rejections come from. **Not** a defect. |
 
-## Quick start (fake sample data, about 15 seconds)
+## Quick start (fake sample data, about 30 seconds)
 
 ```bash
 git clone https://github.com/dvschandraprasad/am-process-anomaly-detection.git
