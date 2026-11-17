@@ -14,6 +14,7 @@ RANDOM_METHODS = {"iforest", "lof", "ocsvm", "autoencoder"}
 LABELS = {
     "limits_3sigma": "Fixed limits (3-sigma rule)",
     "limits": "Fixed limits (tuned k)",
+    "limits_levels": "Fixed limits, level features only (tuned k)",
     "iforest": "Isolation Forest",
     "lof": "Local Outlier Factor",
     "ocsvm": "One-Class SVM",
@@ -26,6 +27,10 @@ def build_detector(name: str, seed: int = 0, params: dict | None = None,
     params = dict(params or {})
     if name == "limits":
         return LimitsDetector(columns=limit_columns, **params)
+    if name == "limits_levels":
+        det = LimitsDetector(columns=limit_columns, **params)
+        det.name = "limits_levels"
+        return det
     if name == "limits_3sigma":
         det = LimitsDetector(columns=limit_columns, fixed_k=3.0, **params)
         det.name = "limits_3sigma"

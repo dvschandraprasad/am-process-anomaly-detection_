@@ -24,6 +24,7 @@ ALERT = "#d03b3b"
 METHOD_COLORS = {
     "limits_3sigma": "#8a8984",   # neutral grey: the untuned rule
     "limits": "#2a78d6",
+    "limits_levels": "#9cc3ef",   # light blue: the weaker fixed-limit variant
     "iforest": "#eb6834",
     "lof": "#1baf7a",
     "ocsvm": "#eda100",

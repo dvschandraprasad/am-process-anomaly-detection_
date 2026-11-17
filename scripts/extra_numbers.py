@@ -96,7 +96,7 @@ def result_numbers(out_dir: Path) -> list[str]:
     s = pd.read_parquet(out_dir / "scores_test.parquet")
     trace = pd.read_csv(out_dir / "traceability.csv")
     methods = [c[len("flag_"):] for c in s.columns if c.startswith("flag_")]
-    tuned = [m for m in methods if m != "limits_3sigma"]
+    tuned = [m for m in methods if m not in ("limits_3sigma", "limits_levels")]
     lines = ["## Alarms on the clean test part (no injected faults)", "",
              "Methods with randomness: first seed only (the scores in `scores_test.parquet`).", ""]
 

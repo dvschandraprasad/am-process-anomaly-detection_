@@ -46,7 +46,7 @@ def test_full_run_writes_tables_figures_and_traceability(data_dir, tmp_path):
     res = run(small_config(data_dir, out))
 
     summary = res["summary_injected"].set_index("method")
-    assert list(summary.index) == ["limits_3sigma", "limits", "iforest", "lof"]
+    assert list(summary.index) == ["limits_3sigma", "limits", "limits_levels", "iforest", "lof"]
     assert summary.loc["iforest", "n_seeds"] == 2 and summary.loc["limits", "n_seeds"] == 1
     for col in ("precision", "recall", "frr", "pr_auc"):
         assert summary[col].between(0, 1).all()
@@ -86,7 +86,7 @@ def test_sample_data_in_the_repo_runs(tmp_path):
     cfg["data"]["parts"] = {p: str(REPO / path) for p, path in cfg["data"]["parts"].items()}
     cfg.update(output_dir=str(tmp_path / "sample"), methods=["limits", "iforest"], seeds=[0])
     res = run(cfg, make_figures=False)
-    assert len(res["summary_injected"]) == 3
+    assert len(res["summary_injected"]) == 4   # 3-sigma, tuned k, level features only, iforest
 
 
 def test_extra_numbers_script_reads_a_run(data_dir, tmp_path):

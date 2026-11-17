@@ -29,6 +29,9 @@ from .load import load_part_cached
 from .models import HAS_TORCH, LABELS, RANDOM_METHODS, build_detector
 
 SPLIT_PATTERN = ("train", "train", "train", "val", "test")
+#: fixed-limit variants that are shown in the tables, but not counted in the
+#: traceability table (limits_3sigma has the same scores as limits)
+COMPARISON_ONLY = ("limits_3sigma", "limits_levels")
 
 
 def log(message: str) -> None:
@@ -155,9 +158,13 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
         f"test {len(seg_test):,}; injected faults: {len(events)} "
         f"({int(seg_inj.df['is_injected'].sum())} faulty segments)")
 
-    # Limits only look at simple level features of the melt pool signals.
-    limit_cols = [i for i, c in enumerate(seg_train.feature_cols)
-                  if c.endswith(("_mean", "_min", "_max")) and c.rsplit("_", 1)[0] in sg["signals"]]
+    # Fixed limits get every summary feature of the melt pool signals (mean, std,
+    # min, max, slope, jitter), like the other methods. "limits_levels" is an
+    # extra, weaker baseline with only mean / min / max, to show what that costs.
+    fc = seg_train.feature_cols
+    signal_cols = [i for i, c in enumerate(fc) if c.rsplit("_", 1)[0] in sg["signals"]]
+    level_cols = [i for i in signal_cols if fc[i].endswith(("_mean", "_min", "_max"))]
+    limit_cols = {"limits": signal_cols, "limits_3sigma": signal_cols, "limits_levels": level_cols}
 
     methods = list(cfg["methods"])
     if "autoencoder" in methods and not HAS_TORCH:
@@ -165,6 +172,7 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
         methods.remove("autoencoder")
     if "limits" in methods:
         methods.insert(0, "limits_3sigma")
+        methods.insert(methods.index("limits") + 1, "limits_levels")
 
     inj_df, test_df = seg_inj.df, seg_test.df
     per_region = bool(sg["geometry_context"])
@@ -191,8 +199,7 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
             params = dict(cfg["method_params"].get(base) or {})
             if base == "autoencoder" and seg_train.context_windows is not None:
                 params["n_context"] = seg_train.context_windows.shape[2]
-            det = build_detector(method, seed, params,
-                                 limit_columns=limit_cols if base == "limits" else None)
+            det = build_detector(method, seed, params, limit_columns=limit_cols.get(method))
             kind = det.input_kind
             t0 = time.perf_counter()
             det.fit(_inputs(seg_train, kind)[train_ok], _groups(seg_train, per_region)[train_ok])
@@ -319,7 +326,9 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
         span = thresholds[method] - centers[method]
         return (np.asarray(scores) - centers[method]) / (span if span != 0 else 1.0)
 
-    tuned = [m for m in methods if m != "limits_3sigma"]
+    # the methods compared in the traceability table and most figures; the two
+    # extra fixed-limit variants are in the tables only
+    tuned = [m for m in methods if m not in COMPARISON_ONLY]
     flags = scores_test[[f"flag_{m}" for m in tuned]].to_numpy()
     ratios = np.column_stack([alarm_ratio(scores_test[f"score_{m}"], m) for m in tuned])
     hit = flags.any(axis=1)
@@ -348,12 +357,15 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
     # ---------------------------------------------------------------- figures
     if make_figures and len(summary_inj):
         fig_dir = out_dir / "figures"
-        ranked = summary_inj[summary_inj["method"] != "limits_3sigma"].sort_values("pr_auc", ascending=False)
+        # The figures show the method with the highest PR-AUC on the test part.
+        # This only picks what to show; nothing is tuned with it.
+        ranked = summary_inj[summary_inj["method"].isin(tuned)].sort_values("pr_auc", ascending=False)
         best = ranked["method"].iloc[0]
         pr_auc = dict(zip(summary_inj["method"], summary_inj["pr_auc"]))
 
         if curves:
-            fig = plots.plot_pr_curves({m: curves[m] for m in tuned if m in curves}, pr_auc,
+            shown = tuned + [m for m in ("limits_levels",) if m in methods]
+            fig = plots.plot_pr_curves({m: curves[m] for m in shown if m in curves}, pr_auc,
                                        float(y_inj[inj_mask].mean()),
                                        "Injected faults: precision-recall curves (test set)")
             fig.savefig(fig_dir / "pr_curves.png"); plots.plt.close(fig)
