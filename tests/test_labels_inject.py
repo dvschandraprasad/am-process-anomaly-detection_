@@ -55,6 +55,13 @@ def test_label_segments():
     out = label_segments(df, xct_thr=30000.0)
     assert out["xct_valid"].tolist() == [True, False]
     assert not out["xct_defect"].any()
+    # segments without an XCT value (NaN) get no XCT label either
+    df["edge_frac"] = [0.0, 0.0]
+    df["xct_min"] = [np.nan, 15000.0]
+    df["xct_max"] = [np.nan, 41000.0]
+    out = label_segments(df, xct_thr=30000.0)
+    assert out["xct_valid"].tolist() == [False, True]
+    assert out["xct_defect"].tolist() == [False, True]
 
 
 def test_injection_changes_only_fault_points(dataset):

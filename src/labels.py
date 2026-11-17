@@ -102,6 +102,7 @@ def label_segments(
     xct_defect    XCT shows a pore inside the segment
     xct_valid     False for segments at the part surface (XCT there mixes
                   metal and air, so it cannot be trusted as a pore label)
+                  and for segments without an XCT value
     is_injected   the segment holds an injected fault
     """
     df = seg_df.copy()
@@ -119,6 +120,8 @@ def label_segments(
             df["xct_valid"] = df["edge_frac"] < 0.5
         else:
             df["xct_valid"] = True
+        # no XCT value here (in the NIST files the lowest ~20 layers have none)
+        df["xct_valid"] &= np.isfinite(df["xct_min"]) & np.isfinite(df["xct_max"])
         df["xct_defect"] = df["xct_defect"] & df["xct_valid"]
     else:
         df["xct_defect"] = False
