@@ -2,7 +2,11 @@
 
 > Results from the full run on all four NIST parts, 17 November 2026
 > (`configs/nist_x4.yaml`). Every number in sections 4 and 5 comes from the
-> files that run wrote to `results/nist_x4/`, unless it says otherwise.
+> files that run wrote to `results/nist_x4/`. A few numbers (alarms per
+> layer, rank correlation inside each layer, melt pool size per part) come
+> from `results/nist_x4/extra_numbers.md`, which
+> `python scripts/extra_numbers.py --config configs/nist_x4.yaml` writes
+> from the same run.
 
 ## 1. Goal
 
@@ -78,12 +82,15 @@ randomness ran with 3 seeds (mean ± std).
 
 | Method | Precision | Recall | F1 | False rejection rate | PR-AUC | FRR at 90 % recall | Run time [ms/layer] |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Fixed limits (3-sigma rule) | 0.118 | 0.789 | 0.206 | 9.2 % | 0.334 | 37.7 % | 0.060 |
-| Fixed limits (tuned k) | 0.341 | 0.522 | 0.413 | 1.6 % | 0.334 | 37.7 % | 0.091 |
-| Isolation Forest | 0.407 ± 0.005 | 0.519 ± 0.016 | 0.456 ± 0.009 | 1.2 ± 0.0 % | 0.432 ± 0.025 | 36.8 ± 1.3 % | 2.310 ± 0.148 |
-| Local Outlier Factor | 0.348 ± 0.005 | 0.686 ± 0.005 | 0.462 ± 0.003 | 2.0 ± 0.1 % | 0.626 ± 0.003 | 30.7 ± 0.2 % | 11.338 ± 0.196 |
-| One-Class SVM | 0.391 ± 0.008 | 0.656 ± 0.007 | 0.489 ± 0.005 | 1.6 ± 0.1 % | 0.609 ± 0.006 | 32.5 ± 3.3 % | 2.276 ± 0.151 |
-| Conv. autoencoder | 0.304 ± 0.018 | 0.306 ± 0.022 | 0.305 ± 0.020 | 1.1 ± 0.0 % | 0.287 ± 0.018 | 62.7 ± 1.6 % | 0.480 ± 0.053 |
+| Fixed limits (3-sigma rule) | 0.118 | 0.789 | 0.206 | 9.2 % | 0.334 | 37.7 % | 0.053 |
+| Fixed limits (tuned k) | 0.341 | 0.522 | 0.413 | 1.6 % | 0.334 | 37.7 % | 0.050 |
+| Isolation Forest | 0.407 ± 0.005 | 0.519 ± 0.016 | 0.456 ± 0.009 | 1.2 ± 0.0 % | 0.432 ± 0.025 | 36.8 ± 1.3 % | 2.172 ± 0.174 |
+| Local Outlier Factor | 0.348 ± 0.005 | 0.686 ± 0.005 | 0.462 ± 0.003 | 2.0 ± 0.1 % | 0.626 ± 0.003 | 30.7 ± 0.2 % | 11.742 ± 0.588 |
+| One-Class SVM | 0.391 ± 0.008 | 0.656 ± 0.007 | 0.489 ± 0.005 | 1.6 ± 0.1 % | 0.609 ± 0.006 | 32.5 ± 3.3 % | 2.470 ± 0.125 |
+| Conv. autoencoder | 0.304 ± 0.018 | 0.306 ± 0.022 | 0.305 ± 0.020 | 1.1 ± 0.0 % | 0.287 ± 0.018 | 62.7 ± 1.6 % | 0.422 ± 0.049 |
+
+Run time: time to score the test part, per layer, on 2 CPU cores. It
+changes a little from run to run.
 
 ![Precision-recall curves](images/full_pr_curves.png)
 
@@ -134,12 +141,28 @@ segments away from the surface, no injected faults):
 
 **Alarms on the clean test part.** 3 915 of 88 378 segments were flagged by
 at least one tuned method (2 382 by one method, 861 by two, 434 by three,
-163 by four, 75 by all five). 325 of them are in layer 1.
+163 by four, 75 by all five). 325 of them are in layer 1. Scores and alarms
+of methods with randomness are from the first seed here.
 
-![Layer 1 of the test part](images/full_layer_heatmap.png)
+The lowest layers have more alarms than the rest of the part:
 
-Layer 1, Local Outlier Factor: 247 of the 469 segments in this layer are
-flagged.
+| Method | Layer 1 (469 segments) | Layers 2–20 (9 453) | Layers 21–250 (78 456) |
+|---|---:|---:|---:|
+| Fixed limits (3-sigma rule) | 75.5 % | 16.7 % | 7.8 % |
+| Fixed limits (tuned k) | 20.0 % | 1.8 % | 1.4 % |
+| Isolation Forest | 1.3 % | 0.3 % | 1.3 % |
+| Local Outlier Factor | 52.7 % | 4.8 % | 1.4 % |
+| One-Class SVM | 56.1 % | 1.6 % | 1.2 % |
+| Conv. autoencoder | 0.0 % | 0.8 % | 1.1 % |
+
+(Share of segments flagged.)
+
+![Layer 9 of the test part](images/full_layer_heatmap.png)
+
+The layer with the most alarms above layer 1 is layer 9. Local Outlier
+Factor flags 98 of its 504 segments. Layer 1 itself is shown in
+[`full_layer_heatmap_layer1.png`](images/full_layer_heatmap_layer1.png)
+(247 of 469 segments flagged).
 
 ## 5. What the results mean
 
@@ -149,9 +172,10 @@ flagged.
   alarm level carries over from part to part only roughly. The melt pool
   of part 4 is a little bigger than that of parts 1 to 3
   ([`data_notes.md`](data_notes.md)), which may explain part of this.
-- **Better than fixed limits?** At a low alarm rate, yes. Local Outlier
-  Factor and One-Class SVM find 69 % and 66 % of the faulty segments at
-  2.0 % and 1.6 % false rejections. Tuned fixed limits find 52 % at 1.6 %.
+- **Better than fixed limits?** On the injected faults in the test part,
+  at a low alarm rate, yes. Local Outlier Factor and One-Class SVM find
+  69 % and 66 % of the faulty segments at 2.0 % and 1.6 % false
+  rejections. Tuned fixed limits find 52 % at 1.6 %.
   PR-AUC: 0.63 and 0.61 against 0.33. The 3-sigma rule finds 79 %, but at
   9.2 % false rejections.
 - **At high recall, no.** To catch 90 % of the faulty segments, every
@@ -168,23 +192,27 @@ flagged.
   fixed limits, which keep separate limits for the overhang region, flag
   1.0 % there. The amount of metal below is an input to every method, but
   only the fixed limits use it to keep separate limits.
-- **Layer 1.** The first layer on the build plate has a bigger melt pool.
-  Local Outlier Factor flags 52.7 % and One-Class SVM 56.1 % of its
-  segments; the 3-sigma rule 75.5 %. Layer 1 holds only 469 of the 88 378
-  test segments, but 325 of the 3 915 flagged ones. (Share per layer worked
-  out from `scores_test.parquet`.) This is a real difference in the
-  process, not a defect.
+- **Layer 1 and the lowest layers.** The first layer on the build plate
+  has a bigger melt pool than the layers above. In the test part it is also
+  much bigger than in layer 1 of the training parts (infill middle value
+  0.0287 mm² against 0.0236 and 0.0242 mm²). Local Outlier Factor flags
+  52.7 % and One-Class SVM 56.1 % of its segments; the 3-sigma rule 75.5 %.
+  Layer 1 holds only 469 of the 88 378 test segments, but 325 of the 3 915
+  flagged ones. Layers 2 to 20 also have more alarms than the layers above
+  for most methods (Local Outlier Factor: 4.8 % against 1.4 %). Most likely
+  this is a normal difference near the build plate, not a defect. This was
+  not checked: these layers have no XCT value.
 - **XCT.** The alarms cannot be checked against pores, because XCT shows
   none away from the surface. The rank correlation is weak (at most −0.16).
   When the score and the XCT value are both ranked inside each layer, it
   gets weaker still (for example −0.09 for Isolation Forest and −0.04 for
-  the tuned fixed limits, worked out from `scores_test.parquet`). So part
+  the tuned fixed limits, first seed). So part
   of it comes from slow changes up the part, not from single spots. It is
   not evidence that any method finds pores.
-- **Top of `traceability.csv`.** The top rows are segments flagged by all
-  five tuned methods, spread over many layers (for example layers 104, 152,
-  118, 64, 227) over solid metal. Nobody has looked at these spots in the
-  raw data yet.
+- **Top of `traceability.csv`.** The top rows are the 75 segments flagged
+  by all five tuned methods, spread over 63 layers (the first five: layers
+  104, 152, 118, 64, 227, all over solid metal; 12 of the 75 are over the
+  overhang region). Nobody has looked at these spots in the raw data yet.
 
 ## 6. Limits of this work
 

@@ -76,7 +76,7 @@ Column list and open questions: [`docs/data_notes.md`](docs/data_notes.md).
 | Label | Meaning | Use |
 |---|---|---|
 | Injected faults | Spikes, drops, drifts and noise bursts added to normal test signals. Place and size are known exactly. | Main numbers |
-| XCT pores | The X-ray CT value at the segment says "pore". Points near any surface of the part are left out (there XCT mixes metal and air). | Check against real defects |
+| XCT pores | The X-ray CT value at the segment says "pore". Points near any surface of the part are left out (closer than 0.25 mm to a side face, on some faces up to 0.5 mm, or closer than 0.06 mm to a top or bottom face), because there XCT mixes metal and air. | Check against real defects |
 | Overhang region | Less than 0.5 mm solid metal below the segment | Shows where false rejections come from. **Not** a defect. |
 
 ## Quick start (fake sample data, about 15 seconds)
@@ -111,6 +111,9 @@ python scripts/run_pipeline.py --config configs/nist_x4_one_part.yaml
 python scripts/download_data.py --parts 2 3 4
 python scripts/check_xct.py --config configs/nist_x4.yaml
 python scripts/run_pipeline.py --config configs/nist_x4.yaml
+
+# 4. Numbers in the docs that the pipeline does not write (after step 3)
+python scripts/extra_numbers.py --config configs/nist_x4.yaml
 ```
 
 Before step 2, read the output of `inspect_data.py` and check the open points
@@ -120,7 +123,7 @@ threshold.
 The NIST zip files unpack one folder deeper (`data/raw/part1/part01/L0001.csv`).
 The loader searches all sub-folders, so `data/raw/part1` in the config works.
 
-The full run takes about 3 minutes on a laptop with 2 CPU cores and needs
+The full run takes about 3.5 minutes on a machine with 2 CPU cores and needs
 about 3 GB of memory. Reading the CSV files the first time adds about
 20 seconds; after that a Parquet copy in `data/processed/` is used.
 
@@ -146,16 +149,17 @@ segments are flagged. Only the 3-sigma rule keeps its fixed level.
 
 | Method | Precision | Recall | F1 | False rejection rate | PR-AUC | FRR at 90 % recall | Run time [ms/layer] |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Fixed limits (3-sigma rule) | 0.118 | 0.789 | 0.206 | 9.2 % | 0.334 | 37.7 % | 0.060 |
-| Fixed limits (tuned k) | 0.341 | 0.522 | 0.413 | 1.6 % | 0.334 | 37.7 % | 0.091 |
-| Isolation Forest | 0.407 ± 0.005 | 0.519 ± 0.016 | 0.456 ± 0.009 | 1.2 ± 0.0 % | 0.432 ± 0.025 | 36.8 ± 1.3 % | 2.310 ± 0.148 |
-| Local Outlier Factor | 0.348 ± 0.005 | 0.686 ± 0.005 | 0.462 ± 0.003 | 2.0 ± 0.1 % | 0.626 ± 0.003 | 30.7 ± 0.2 % | 11.338 ± 0.196 |
-| One-Class SVM | 0.391 ± 0.008 | 0.656 ± 0.007 | 0.489 ± 0.005 | 1.6 ± 0.1 % | 0.609 ± 0.006 | 32.5 ± 3.3 % | 2.276 ± 0.151 |
-| Conv. autoencoder | 0.304 ± 0.018 | 0.306 ± 0.022 | 0.305 ± 0.020 | 1.1 ± 0.0 % | 0.287 ± 0.018 | 62.7 ± 1.6 % | 0.480 ± 0.053 |
+| Fixed limits (3-sigma rule) | 0.118 | 0.789 | 0.206 | 9.2 % | 0.334 | 37.7 % | 0.053 |
+| Fixed limits (tuned k) | 0.341 | 0.522 | 0.413 | 1.6 % | 0.334 | 37.7 % | 0.050 |
+| Isolation Forest | 0.407 ± 0.005 | 0.519 ± 0.016 | 0.456 ± 0.009 | 1.2 ± 0.0 % | 0.432 ± 0.025 | 36.8 ± 1.3 % | 2.172 ± 0.174 |
+| Local Outlier Factor | 0.348 ± 0.005 | 0.686 ± 0.005 | 0.462 ± 0.003 | 2.0 ± 0.1 % | 0.626 ± 0.003 | 30.7 ± 0.2 % | 11.742 ± 0.588 |
+| One-Class SVM | 0.391 ± 0.008 | 0.656 ± 0.007 | 0.489 ± 0.005 | 1.6 ± 0.1 % | 0.609 ± 0.006 | 32.5 ± 3.3 % | 2.470 ± 0.125 |
+| Conv. autoencoder | 0.304 ± 0.018 | 0.306 ± 0.022 | 0.305 ± 0.020 | 1.1 ± 0.0 % | 0.287 ± 0.018 | 62.7 ± 1.6 % | 0.422 ± 0.049 |
 
 Precision looks low for every method because faulty segments are rare
 (1.5 %). A method that guesses at random gets a PR-AUC of about 0.015.
-Run time is the time to score the test part, per layer, on 2 CPU cores.
+Run time is the time to score the test part, per layer, on 2 CPU cores. It
+changes from run to run (by up to about 20 % between three full runs).
 
 ![Precision-recall curves, full run](docs/images/full_pr_curves.png)
 
@@ -211,10 +215,10 @@ single spots (see [the report](docs/report.md#5-what-the-results-mean)).
 
 ### What the results say
 
-- Local Outlier Factor and One-Class SVM catch the most injected faults
-  (recall 0.69 and 0.66, PR-AUC 0.63 and 0.61) while flagging 2.0 % and
-  1.6 % of normal segments. Tuned fixed limits reach recall 0.52 and
-  PR-AUC 0.33 at 1.6 %.
+- Of the methods tuned to a 1 % alarm level, Local Outlier Factor and
+  One-Class SVM catch the most injected faults (recall 0.69 and 0.66,
+  PR-AUC 0.63 and 0.61) while flagging 2.0 % and 1.6 % of normal segments.
+  Tuned fixed limits reach recall 0.52 and PR-AUC 0.33 at 1.6 %.
 - To catch 90 % of the faulty segments, every method except the
   autoencoder must flag about a third of the normal segments (30.7 to
   37.7 %). So the learned methods help most at low alarm rates.
@@ -226,13 +230,20 @@ single spots (see [the report](docs/report.md#5-what-the-results-mean)).
 - Slow drifts are the hardest kind for most methods. The autoencoder is the
   weakest method here (PR-AUC 0.29).
 - Isolation Forest and One-Class SVM give many false rejections in the
-  overhang region (18.8 % and 9.1 %). The fixed limits, which are set per
-  region, give 1.0 % there.
+  overhang region (18.8 % and 9.1 %). The tuned fixed limits, which are set
+  per region, give 1.0 % there.
 - Many alarms on the clean test part are in layer 1, the first layer on the
-  build plate (325 of 3 915 flagged segments). Its melt pool is bigger than
-  in the layers above. The layer heatmap below shows this layer.
+  build plate (325 of 3 915 flagged segments, from only 469 of 88 378
+  segments). Its melt pool is bigger than in the layers above, and bigger
+  than in layer 1 of the training parts. Layers 2 to 20 also get more
+  alarms than the rest for most methods
+  ([numbers](docs/report.md#4-results)).
 
-![Layer 1 of the test part, Local Outlier Factor](docs/images/full_layer_heatmap.png)
+The heatmap below shows layer 9, the layer with the most alarms above
+layer 1. Layer 1 is in
+[`full_layer_heatmap_layer1.png`](docs/images/full_layer_heatmap_layer1.png).
+
+![Layer 9 of the test part, Local Outlier Factor](docs/images/full_layer_heatmap.png)
 
 ### What the results do not show
 
@@ -284,7 +295,8 @@ the segment is at a surface), so someone can go and look at that exact spot.
 │   ├── images/         figures shown in the docs (full_* = full run)
 │   └── report.md       short report with results and recommendations
 ├── notebooks/          01_explore, 02_results
-├── scripts/            download_data, inspect_data, check_xct, run_pipeline, make_sample_data
+├── scripts/            download_data, inspect_data, check_xct, run_pipeline,
+│                       extra_numbers, make_sample_data
 ├── src/
 │   ├── load.py         read the NIST files
 │   ├── features.py     tracks, segments, features

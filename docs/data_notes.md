@@ -93,7 +93,10 @@ full download is described in the next section.
 ## The full download (all four parts)
 
 Checked on 17 November 2026 with `scripts/inspect_data.py`,
-`scripts/check_xct.py` and the full run (`configs/nist_x4.yaml`).
+`scripts/check_xct.py` and the full run (`configs/nist_x4.yaml`). The counts,
+tracks and melt pool numbers in the table below are written by
+`python scripts/extra_numbers.py --config configs/nist_x4.yaml` to
+`results/nist_x4/extra_numbers.md`.
 
 | Point | What was seen |
 |---|---|
@@ -110,8 +113,9 @@ Checked on 17 November 2026 with `scripts/inspect_data.py`,
 | Overhang region | Less than 0.5 mm solid metal below: 5.6 % of all frames, in layers 64 to 250. Over it the infill melt pool is only 2 to 4 % bigger (middle value). Directly over powder (less than 0.1 mm metal below) it is smaller: 0.0172 to 0.0196 mm². |
 
 The melt pool numbers above are middle values over frames with
-`cmd_power` 195 W and `mp_area_100` > 0, worked out from the loaded parts
-(`data/processed/`). They are not written by the pipeline.
+`cmd_power` 195 W (infill) or 100 W (contour) and `mp_area_100` > 0, from
+`scripts/extra_numbers.py` (see above). "Layers 51 to 250" is "layers > 50"
+there.
 
 ### XCT on the full parts
 
@@ -133,14 +137,20 @@ layer are left out), the automatic threshold (median − 6 robust std, about
   (layers 25–26 and 49–50; the cross-section starts to shrink at layer 27
   and the number of frames per layer drops by about 30 % at layer 51);
 - the outer side faces at the largest y and the largest x of each part.
-  The old rule missed them because these points lie exactly on a cell border.
+  The parts are 9 × 5 mm, a whole number of 0.25 mm cells, so the outermost
+  line of points at the largest x (and y) starts a new cell of its own. The
+  old rule then marked only that one line.
 
 So all low XCT values are at a surface, where an XCT voxel holds metal and
 air. They are **not** pores.
 
 **With the full surface rule** (`labels.add_xct_surface`: points closer than
-0.5 mm to the outside in the same layer, or closer than 0.06 mm to a top
-face, a face over powder or the start of the XCT scan, are left out):
+0.25 mm to the outside in the same layer, or closer than 0.06 mm to a top
+face, a face over powder or the start of the XCT scan, are left out). The
+side check works on 0.25 mm cells, so on some faces points up to 0.5 mm
+from the outside are left out too. `check_xct.py` prints how close the inner
+points come to the outer faces: in all four parts 0.50 to 0.51 mm at the
+smallest x and y, and 0.25 to 0.26 mm at the largest x and y.
 
 | Part | Inner points | Middle value | Lowest value | Auto threshold | Points below it |
 |---|---:|---:|---:|---:|---:|
