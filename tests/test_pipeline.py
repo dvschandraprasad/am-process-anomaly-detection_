@@ -79,6 +79,24 @@ def test_thresholds_come_from_validation_not_test(data_dir, tmp_path):
     assert not np.isclose(a["summary_injected"]["recall"].iloc[1], b["summary_injected"]["recall"].iloc[1])
 
 
+def test_changing_the_test_part_changes_no_alarm_level(dataset, data_dir, tmp_path):
+    """Other test data (bigger, noisier melt pool) must not change any alarm level."""
+    from src.synthetic import write_part
+    signals = ["mp_length_100", "mp_width_100", "mp_area_100"]
+    other = dataset[3].copy()
+    for s in signals:
+        other[s] = other[s] * 1.3 + np.random.default_rng(0).normal(0, other[s].std(), len(other)).clip(0)
+    write_part(other, tmp_path / "part3_other")
+
+    kw = dict(methods=["limits", "iforest"], seeds=[0])
+    a = run(small_config(data_dir, tmp_path / "a", **kw), make_figures=False)
+    cfg = small_config(data_dir, tmp_path / "b", **kw)
+    cfg["data"]["parts"][3] = str(tmp_path / "part3_other")
+    b = run(cfg, make_figures=False)
+    assert a["thresholds"] == b["thresholds"]
+    assert not a["summary_injected"]["frr"].equals(b["summary_injected"]["frr"])
+
+
 def test_sample_data_in_the_repo_runs(tmp_path):
     if not (REPO / "data" / "sample" / "part1").exists():
         pytest.skip("sample data not generated")
