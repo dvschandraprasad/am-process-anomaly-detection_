@@ -106,7 +106,7 @@ tracks and melt pool numbers in the table below are written by
 | Empty values | Layer 1 has no layer camera and no XCT values (columns 20 to 40 are `NaN`). The lowest layers have no XCT values: layers 1–18 in part 1, 1–19 in part 2, 1–20 in parts 3 and 4. Nothing else is empty. |
 | Time column | Time since the start of the layer, for the whole build plate. The parts are scanned one after the other: the first row of a layer is at about 0.08 s in part 1, 1.0 s in part 2, 2.0 s in part 3 and 3.0 s in part 4. |
 | Time precision | **The files store the time with 5 significant digits** (for example `3.1712e+06`). Above 1 000 000 µs (most of parts 2 to 4) neighbouring frames then often get the same time: steps of 200, 0, 200, 0 µs, while the laser moves on by 0.08 mm per frame as usual. The code no longer treats a step of 0 as the start of a new track. With that, all four parts give the same 23 999 tracks. |
-| Short tracks | Tracks shorter than 13 frames get no score: 3.2 % of all frames in each part. |
+| Frames without a score | 10.7 % of all frames are in no segment (1 − 88 378 × 12 / 1 187 088): tracks shorter than 13 frames (3.2 % of all frames), the first frame of every longer track (1.6 %), and frames left over at the end of a track when fewer than 12 remain (5.8 %). The 3.2 % is in `extra_numbers.md`; the split of the rest was worked out once from the loaded part 4. |
 | Place on the build plate | Part 1: x −6 to 3, y 11 to 16 mm. Part 2: x −2 to 7, y 2 to 7. Part 3: x 2 to 11, y −7 to −2. Part 4: x 6 to 15, y −16 to −11. The four parts sit on a diagonal line. |
 | Melt pool size per part | Infill (195 W), frames with a melt pool, middle value of the area (threshold 100): part 1 0.0213, part 2 0.0223, part 3 0.0228, part 4 0.0238 mm². It grows a little from part 1 to part 4. Contour (100 W): 0.0112 to 0.0115 mm² in all parts. |
 | Layer 1 | The first layer on the build plate has a bigger melt pool. Part 4, infill: 0.0287 mm² in layer 1, 0.0236 mm² in layers 51 to 250. |
@@ -125,14 +125,18 @@ Numbers from `python scripts/check_xct.py --config configs/nist_x4.yaml`.
 layer are left out), the automatic threshold (median − 6 robust std, about
 0.463 to 0.465) gives:
 
-| Part | Points below the threshold | In the lowest 3 XCT layers | In the top 2 layers | Elsewhere at a surface | Away from any surface |
+| Part | Points below the threshold | In the lowest 3 XCT layers | In the top 2 layers | Elsewhere, marked by the full rule | Not marked by the full rule |
 |---|---:|---:|---:|---:|---:|
 | 1 | 4 174 | 2 990 | 744 | 440 | 0 |
 | 2 | 1 971 | 803 | 713 | 455 | 0 |
 | 3 | 1 117 | 159 | 594 | 364 | 0 |
 | 4 | 1 474 | 179 | 702 | 593 | 0 |
 
-"Elsewhere at a surface" is mostly:
+The full rule (below) was made after looking at exactly these points, so the
+0 in the last column is not a separate check. It only shows that the rule
+covers them.
+
+"Elsewhere, marked by the full rule" is mostly:
 - top faces of regions that end, in the same layers in all four parts
   (layers 25–26 and 49–50; the cross-section starts to shrink at layer 27
   and the number of frames per layer drops by about 30 % at layer 51);
@@ -141,8 +145,8 @@ layer are left out), the automatic threshold (median − 6 robust std, about
   line of points at the largest x (and y) starts a new cell of its own. The
   old rule then marked only that one line.
 
-So all low XCT values are at a surface, where an XCT voxel holds metal and
-air. They are **not** pores.
+So all these low XCT values are at a surface, where an XCT voxel holds metal
+and air. They are **not** pores.
 
 **With the full surface rule** (`labels.add_xct_surface`: points closer than
 0.25 mm to the outside in the same layer, or closer than 0.06 mm to a top
@@ -161,13 +165,29 @@ smallest x and y, and 0.25 to 0.26 mm at the largest x and y.
 
 The full rule leaves out about 45 % of the points with an XCT value. The
 threshold of the full run comes from the inner points of parts 1 and 2:
-0.479.
+0.479 (the red line in the histogram).
+
+**How much of each layer XCT covers.** XCT is read only where a camera
+frame is. Each frame gives one `xct_m3` value, a 3 × 3 × 3 mean of 10 µm
+voxels, so about 0.03 × 0.03 mm. `check_xct.py` adds this up per layer and
+divides by the layer area (counted in 0.25 mm cells): about 12 % in every
+part (middle value over layers).
 
 ![XCT values per part](images/full_xct_histogram.png)
 
-**Conclusion.** These four parts show **no pores** away from the surface at
-the XCT resolution (10 µm voxels, 3 × 3 × 3 mean). `pore_is: low` is right
-(air is dark), and `threshold: auto` is kept. But XCT gives no pore labels
-here, so the methods cannot be checked against real pores. Pores close to a
-surface (where they are often found in this kind of part) cannot be told
-apart from the surface itself with this method.
+**Conclusion.** At the sampled points, after leaving out the surface band,
+no XCT value is below the threshold in any of the four parts. `pore_is: low`
+is right (air is dark), and `threshold: auto` is kept. But XCT gives no
+pore labels here, so the methods cannot be checked against real pores.
+
+This does not show that the parts have no pores. It cannot see:
+- **small pores:** with a 3 × 3 × 3 mean and a threshold 6 robust std below
+  the middle value, roughly a fifth of the 27 voxels must be air (a rough
+  estimate, if air reads about 0.2: the middle value is 0.544, the
+  threshold 0.479, and values near the surface go down to 0.25);
+- **pores between the sampled spots** (about 88 % of each layer);
+- **pores near the surface**, where they are common in laser powder bed
+  fusion: about 45 % of the sampled points are left out as "near a surface".
+
+The surface rule was chosen after looking at the XCT values of all four
+parts, including test part 4.

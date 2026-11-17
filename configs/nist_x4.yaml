@@ -24,7 +24,7 @@ labels:
     column: xct_m3
     pore_is: low        # checked: air at the part surface gives low values
     threshold: auto     # checked with scripts/check_xct.py on all 4 parts (17 Nov 2026):
-                        # once all surfaces are left out, no point is below it.
+                        # at the sampled points away from all surfaces, no value is below it.
                         # See docs/data_notes.md.
 
 output_dir: results/nist_x4

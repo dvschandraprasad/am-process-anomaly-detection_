@@ -6,6 +6,14 @@ that are **not** normal, and check them against X-ray CT.
 
 ![tests](https://github.com/dvschandraprasad/am-process-anomaly-detection/actions/workflows/tests.yml/badge.svg)
 
+> **In short.** On public NIST melt pool data (4 parts: train on 2, set the
+> alarm level on 1, test on 1), Local Outlier Factor and One-Class SVM catch
+> somewhat more **synthetic** faults than fixed limits set per region (recall
+> 0.67 and 0.66 against 0.61 when all flag 1 % of normal segments), and
+> about the same when 90 % of faults must be caught. Real defects could not
+> be tested: at the points where XCT is read, no pore shows up away from the
+> surface. All numbers come from one test part.
+
 > **Status.** The full run on all four real NIST parts is done (17 November
 > 2026): train on parts 1 and 2, set the alarm level on part 3, test on
 > part 4. See [Results](#results). The short report is in
@@ -54,8 +62,9 @@ Column list and open questions: [`docs/data_notes.md`](docs/data_notes.md).
 
 | Method | Kind | Idea |
 |---|---|---|
-| Fixed limits, 3-sigma rule | Rule (baseline) | Flag if any feature is outside mean ± 3 std. No tuning. |
+| Fixed limits, 3-sigma rule | Rule (baseline) | Flag if any of the 18 melt pool features (6 numbers × 3 signals) is outside mean ± 3 std. Separate limits per laser setting, track start and region. No tuning. |
 | Fixed limits, tuned k | Rule (baseline) | Same, but k is set on validation data like for the other methods |
+| Fixed limits, level features only | Rule (extra baseline) | Like tuned k, but only mean, min and max of each signal (9 features). Shown to see how much the choice of features matters. |
 | Isolation Forest | Classic ML | Unusual points are easy to separate with random cuts |
 | Local Outlier Factor | Classic ML | Unusual points sit in emptier areas than their neighbours |
 | One-Class SVM | Classic ML | Draw a tight border around normal data |
@@ -67,9 +76,19 @@ Column list and open questions: [`docs/data_notes.md`](docs/data_notes.md).
 - Training uses **normal segments only** (segments with an XCT pore are
   removed; in the full NIST run there were none).
 - The alarm level of each method is set on the **validation part** so that 1 %
-  of normal validation segments are flagged. The test part is never used for
-  tuning. A test checks this (`tests/test_pipeline.py`).
-- Methods with randomness run with 3 seeds; tables show mean ± std.
+  of normal validation segments are flagged.
+- **No model, scaler, alarm level or fault size is fitted on the test part.**
+  Tests check that changing the test part changes no alarm level
+  (`tests/test_pipeline.py`).
+- Known exception: the XCT surface rule (which points count as "near a
+  surface") was chosen after looking at the XCT values of all four parts,
+  including the test part. It only touches the XCT labels.
+- The figures show the method with the highest PR-AUC on the test part. This
+  only picks what to show.
+- Methods with randomness run with 3 seeds. The ± in the tables is the
+  standard deviation over these model seeds. The injected faults are placed
+  with one fixed seed, so the ± does not include the effect of where the
+  faults land.
 
 ### The three kinds of labels
 
@@ -85,6 +104,7 @@ Column list and open questions: [`docs/data_notes.md`](docs/data_notes.md).
 git clone https://github.com/dvschandraprasad/am-process-anomaly-detection.git
 cd am-process-anomaly-detection
 python -m venv .venv && source .venv/bin/activate
+pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only PyTorch, as in CI
 pip install -r requirements.txt
 
 pytest -q                                                   # run the tests
@@ -123,8 +143,8 @@ threshold.
 The NIST zip files unpack one folder deeper (`data/raw/part1/part01/L0001.csv`).
 The loader searches all sub-folders, so `data/raw/part1` in the config works.
 
-The full run takes about 3.5 minutes on a machine with 2 CPU cores and needs
-about 3 GB of memory. Reading the CSV files the first time adds about
+The full run takes about 3 to 4 minutes on a machine with 2 CPU cores and
+needs about 3 GB of memory. Reading the CSV files the first time adds about
 20 seconds; after that a Parquet copy in `data/processed/` is used.
 
 Then look at the data yourself in `notebooks/01_explore.ipynb` and at the
@@ -139,8 +159,8 @@ results in `notebooks/02_results.ipynb`.
 | Train | parts 1 and 2: 176 756 segments |
 | Validation (sets the alarm level) | part 3: 88 378 segments |
 | Test | part 4: 88 378 segments |
-| Injected faults in the test part | 594 faults, 1 362 faulty segments (1.5 % of test segments) |
-| Seeds | 3 for methods with randomness; tables show mean ± std |
+| Injected faults in the test part | 594 faults: 1 362 faulty and 86 881 normal segments (1.5 % faulty). 135 segments with only 1 or 2 fault frames are left out. |
+| Seeds | 3 for methods with randomness; ± is the std over these model seeds |
 
 The alarm level of every method is set on part 3 so that 1 % of its normal
 segments are flagged. Only the 3-sigma rule keeps its fixed level.
@@ -149,53 +169,90 @@ segments are flagged. Only the 3-sigma rule keeps its fixed level.
 
 | Method | Precision | Recall | F1 | False rejection rate | PR-AUC | FRR at 90 % recall | Run time [ms/layer] |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Fixed limits (3-sigma rule) | 0.118 | 0.789 | 0.206 | 9.2 % | 0.334 | 37.7 % | 0.053 |
-| Fixed limits (tuned k) | 0.341 | 0.522 | 0.413 | 1.6 % | 0.334 | 37.7 % | 0.050 |
-| Isolation Forest | 0.407 ± 0.005 | 0.519 ± 0.016 | 0.456 ± 0.009 | 1.2 ± 0.0 % | 0.432 ± 0.025 | 36.8 ± 1.3 % | 2.172 ± 0.174 |
-| Local Outlier Factor | 0.348 ± 0.005 | 0.686 ± 0.005 | 0.462 ± 0.003 | 2.0 ± 0.1 % | 0.626 ± 0.003 | 30.7 ± 0.2 % | 11.742 ± 0.588 |
-| One-Class SVM | 0.391 ± 0.008 | 0.656 ± 0.007 | 0.489 ± 0.005 | 1.6 ± 0.1 % | 0.609 ± 0.006 | 32.5 ± 3.3 % | 2.470 ± 0.125 |
-| Conv. autoencoder | 0.304 ± 0.018 | 0.306 ± 0.022 | 0.305 ± 0.020 | 1.1 ± 0.0 % | 0.287 ± 0.018 | 62.7 ± 1.6 % | 0.422 ± 0.049 |
+| Fixed limits (3-sigma rule) | 0.106 | 0.830 | 0.188 | 10.9 % | 0.584 | 28.5 % | 0.092 |
+| Fixed limits (tuned k) | 0.423 | 0.653 | 0.513 | 1.4 % | 0.584 | 28.5 % | 0.079 |
+| Fixed limits, level features only (tuned k) | 0.370 | 0.570 | 0.449 | 1.5 % | 0.370 | 35.9 % | 0.057 |
+| Isolation Forest | 0.415 ± 0.017 | 0.510 ± 0.034 | 0.458 ± 0.024 | 1.1 ± 0.0 % | 0.424 ± 0.046 | 34.8 ± 1.2 % | 2.283 ± 0.101 |
+| Local Outlier Factor | 0.359 ± 0.012 | 0.701 ± 0.008 | 0.475 ± 0.010 | 2.0 ± 0.1 % | 0.667 ± 0.004 | 26.8 ± 0.9 % | 11.487 ± 0.594 |
+| One-Class SVM | 0.419 ± 0.013 | 0.697 ± 0.008 | 0.523 ± 0.010 | 1.5 ± 0.1 % | 0.654 ± 0.009 | 31.1 ± 2.4 % | 2.275 ± 0.095 |
+| Conv. autoencoder | 0.318 ± 0.020 | 0.322 ± 0.026 | 0.320 ± 0.023 | 1.1 ± 0.0 % | 0.304 ± 0.021 | 59.6 ± 1.3 % | 0.403 ± 0.042 |
 
 Precision looks low for every method because faulty segments are rare
 (1.5 %). A method that guesses at random gets a PR-AUC of about 0.015.
-Run time is the time to score the test part, per layer, on 2 CPU cores. It
-changes from run to run (by up to about 20 % between three full runs).
+Run time is the time to score the test part, per layer, on 2 CPU cores.
+It changed clearly between full runs (for example the autoencoder took
+0.38 to 0.48 ms per layer), so only the order of size counts.
+
+**Recall at the same false rejection rate** (for comparison only). With the
+alarm level from part 3, the methods end up at different false rejection
+rates on part 4 (1.1 to 2.0 %). To compare them at one point, here the
+alarm level is set **on the test part** so that every method flags exactly
+1 % or 2 % of its normal segments. This is not how a method would do on a
+new part.
+
+| Method | Recall at 1 % FRR | Recall at 2 % FRR |
+|---|---:|---:|
+| Fixed limits (tuned k) | 0.614 | 0.684 |
+| Fixed limits, level features only (tuned k) | 0.491 | 0.626 |
+| Isolation Forest | 0.490 ± 0.039 | 0.580 ± 0.010 |
+| Local Outlier Factor | 0.665 ± 0.003 | 0.702 ± 0.007 |
+| One-Class SVM | 0.663 ± 0.004 | 0.717 ± 0.011 |
+| Conv. autoencoder | 0.315 ± 0.025 | 0.387 ± 0.025 |
 
 ![Precision-recall curves, full run](docs/images/full_pr_curves.png)
 
-**Share of injected faults caught, by kind**
+**Share of injected faults caught, by kind** (over the 576 of 594 faults
+that have at least one labelled segment: 148 drifts, 143 drops, 148 noise
+bursts, 137 spikes)
 
 | Method | drift | drop | noise | spike |
 |---|---:|---:|---:|---:|
-| Fixed limits (3-sigma rule) | 99 % | 100 % | 100 % | 98 % |
-| Fixed limits (tuned k) | 68 % | 94 % | 94 % | 67 % |
-| Isolation Forest | 36 % | 92 % | 100 % | 90 % |
-| Local Outlier Factor | 86 % | 100 % | 100 % | 96 % |
-| One-Class SVM | 84 % | 99 % | 100 % | 98 % |
-| Conv. autoencoder | 8 % | 30 % | 100 % | 16 % |
+| Fixed limits (3-sigma rule) | 99 % | 100 % | 100 % | 100 % |
+| Fixed limits (tuned k) | 86 % | 98 % | 100 % | 97 % |
+| Fixed limits, level features only (tuned k) | 78 % | 95 % | 97 % | 77 % |
+| Isolation Forest | 37 % | 87 % | 100 % | 89 % |
+| Local Outlier Factor | 87 % | 100 % | 100 % | 98 % |
+| One-Class SVM | 92 % | 100 % | 100 % | 99 % |
+| Conv. autoencoder | 8 % | 38 % | 100 % | 20 % |
 
-**False rejections by region** (normal test segments: 83 626 with solid
-metal below, 3 390 in the overhang region)
+**False rejections by region** (normal test segments: 83 497 with solid
+metal below, 3 384 in the overhang region)
 
 | Method | Solid metal below | Overhang region |
 |---|---:|---:|
-| Fixed limits (3-sigma rule) | 9.3 % | 7.4 % |
-| Fixed limits (tuned k) | 1.6 % | 1.0 % |
-| Isolation Forest | 0.5 ± 0.0 % | 18.8 ± 0.6 % |
-| Local Outlier Factor | 1.9 ± 0.1 % | 4.3 ± 0.3 % |
-| One-Class SVM | 1.3 ± 0.1 % | 9.1 ± 0.1 % |
-| Conv. autoencoder | 1.1 ± 0.0 % | 2.0 ± 0.2 % |
+| Fixed limits (3-sigma rule) | 11.0 % | 10.3 % |
+| Fixed limits (tuned k) | 1.4 % | 1.4 % |
+| Fixed limits, level features only (tuned k) | 1.5 % | 1.0 % |
+| Isolation Forest | 0.4 ± 0.0 % | 19.4 ± 0.9 % |
+| Local Outlier Factor | 1.9 ± 0.1 % | 4.6 ± 0.1 % |
+| One-Class SVM | 1.2 ± 0.1 % | 9.9 ± 0.2 % |
+| Conv. autoencoder | 1.0 ± 0.0 % | 2.0 ± 0.2 % |
 
 ![False rejections by region, full run](docs/images/full_frr_by_region.png)
 
 ### X-ray CT
 
-**No pores were found.** Away from the part surface, no XCT value in any of
-the four parts is below the pore threshold (0.479 in this run). Low XCT
-values do exist, but all of them sit at a surface: the lowest layers of the
-XCT scan, the top layers, top faces, and side faces
+**At the points where XCT is read, and away from the surface, no XCT value
+is below the pore threshold** (0.479), in any of the four parts. Low XCT
+values do exist, but all of them sit in the surface band that is left out:
+the lowest layers of the XCT scan, the top layers, top faces and side faces
 ([details](docs/data_notes.md#xct-on-the-full-parts)). So precision and
 recall against real pores **cannot be given**.
+
+This does **not** mean the parts have no pores. The check cannot see:
+
+- **small pores.** Each value is a 3 × 3 × 3 mean of 10 µm voxels, and the
+  threshold is 6 robust standard deviations below the middle value. Roughly
+  a fifth of the 27 voxels must be air before a value drops below it (a
+  rough estimate from the values at the surface).
+- **pores between the sampled spots.** XCT is read only where a camera
+  frame is: about 12 % of each layer's area.
+- **pores near the surface**, where they are common in this kind of
+  process. About 45 % of the sampled points are left out as "near a
+  surface".
+
+The surface rule was chosen after looking at the XCT values of all four
+parts, including test part 4.
 
 ![XCT values per part](docs/images/full_xct_histogram.png)
 
@@ -204,43 +261,53 @@ the XCT value, on the 47 838 test segments away from the surface:
 
 | Method | Rank correlation |
 |---|---:|
-| Fixed limits (tuned k) | −0.143 |
-| Isolation Forest | −0.160 ± 0.005 |
-| Local Outlier Factor | −0.092 ± 0.003 |
-| One-Class SVM | −0.001 ± 0.005 |
+| Fixed limits (tuned k) | −0.100 |
+| Fixed limits, level features only (tuned k) | −0.143 |
+| Isolation Forest | −0.155 ± 0.002 |
+| Local Outlier Factor | −0.091 ± 0.004 |
+| One-Class SVM | −0.000 ± 0.007 |
 | Conv. autoencoder | −0.048 ± 0.001 |
 
-The link is weak. Part of it comes from slow changes up the part, not from
+The link is weak. Most of it comes from slow changes up the part, not from
 single spots (see [the report](docs/report.md#5-what-the-results-mean)).
 
 ### What the results say
 
-- Of the methods tuned to a 1 % alarm level, Local Outlier Factor and
-  One-Class SVM catch the most injected faults (recall 0.69 and 0.66,
-  PR-AUC 0.63 and 0.61) while flagging 2.0 % and 1.6 % of normal segments.
-  Tuned fixed limits reach recall 0.52 and PR-AUC 0.33 at 1.6 %.
-- To catch 90 % of the faulty segments, every method except the
-  autoencoder must flag about a third of the normal segments (30.7 to
-  37.7 %). So the learned methods help most at low alarm rates.
-- The 3-sigma rule catches 79 % of the faulty segments, but it flags 9.2 %
+- **Fixed limits with all features are a strong baseline.** With the alarm
+  level from part 3, tuned fixed limits catch 65 % of the faulty segments
+  at 1.4 % false rejections.
+- **Local Outlier Factor and One-Class SVM are somewhat better at low alarm
+  rates.** When every method flags exactly 1 % of normal test segments,
+  they catch 67 % and 66 %, against 61 % for the fixed limits; at 2 %:
+  70 % and 72 % against 68 %. PR-AUC: 0.67 and 0.65 against 0.58.
+- **At high recall they are about equal.** To catch 90 % of the faulty
+  segments, Local Outlier Factor must flag 26.8 % of normal segments, the
+  fixed limits 28.5 % and One-Class SVM 31.1 %.
+- **The features matter as much as the method.** Fixed limits on mean, min
+  and max only reach PR-AUC 0.37 and catch 49 % at 1 %.
+- Isolation Forest (PR-AUC 0.42) and the autoencoder (0.30) are weaker than
+  the fixed limits here. Slow drifts are the hardest kind for them
+  (37 % and 8 % caught).
+- The 3-sigma rule catches 83 % of the faulty segments, but it flags 10.9 %
   of the normal ones.
 - The alarm level was set for 1 % on part 3. On part 4 the tuned methods
   flag 1.1 to 2.0 % of normal segments. So an alarm level carries over to
   a new part only roughly.
-- Slow drifts are the hardest kind for most methods. The autoencoder is the
-  weakest method here (PR-AUC 0.29).
 - Isolation Forest and One-Class SVM give many false rejections in the
-  overhang region (18.8 % and 9.1 %). The tuned fixed limits, which are set
-  per region, give 1.0 % there.
+  overhang region (19.4 % and 9.9 %). The tuned fixed limits, which are set
+  per region, give 1.4 % there.
 - Many alarms on the clean test part are in layer 1, the first layer on the
-  build plate (325 of 3 915 flagged segments, from only 469 of 88 378
+  build plate (271 of 3 828 flagged segments, from only 469 of 88 378
   segments). Its melt pool is bigger than in the layers above, and bigger
   than in layer 1 of the training parts. Layers 2 to 20 also get more
   alarms than the rest for most methods
   ([numbers](docs/report.md#4-results)).
 
 The heatmap below shows layer 9, the layer with the most alarms above
-layer 1. Layer 1 is in
+layer 1 (Local Outlier Factor, 101 of 504 segments flagged). The tracks run
+along y, from y ≈ −11 to −16 mm, and have 5 segments each. The rows of
+alarms at y ≈ −14.4 and −15.4 mm are the last two segments of the tracks:
+they hold 61 of the 101 alarms. Layer 1 is in
 [`full_layer_heatmap_layer1.png`](docs/images/full_layer_heatmap_layer1.png).
 
 ![Layer 9 of the test part, Local Outlier Factor](docs/images/full_layer_heatmap.png)
@@ -251,8 +318,8 @@ layer 1. Layer 1 is in
   spread over test parts.
 - **Injected faults are synthetic.** They show that a method reacts to that
   kind of signal change. They are not real defects.
-- **Nothing about real pores.** The XCT shows no pores away from the
-  surface, so finding real defects is not tested here.
+- **Nothing about real pores.** XCT gives no pore labels here (see above),
+  so finding real defects is not tested.
 - The overhang region is "different", not "defective".
 
 **Earlier small check** (part 1, layers 120 to 140, split by blocks of
@@ -271,12 +338,15 @@ the segment is at a surface), so someone can go and look at that exact spot.
   reacts to that kind of signal change. They do not prove it finds real defects.
 - XCT labels are real, but lining up XCT with the laser position has an
   uncertainty of about one voxel (10 µm), and the pore threshold is our own
-  choice. In the four NIST parts no pore was found away from the surface.
-  Points near a surface are left out, so pores close to a surface cannot be
-  seen with this method.
+  choice. XCT is read only at the camera frames (about 12 % of each layer),
+  and points near a surface are left out. At the remaining points no value
+  is below the threshold, so small pores, pores between the sampled spots
+  and pores near the surface cannot be seen.
 - The overhang region is "different", not "defective".
-- Tracks shorter than 13 frames get no score. In the real data these are the
-  short scan lines across thin walls (3.2 % of all frames in each full part).
+- 10.7 % of all frames are in no segment and get no score: tracks shorter
+  than 13 frames (short scan lines across thin walls, 3.2 % of all frames),
+  the first frame of every longer track (1.6 %), and the frames left over at
+  the end of a track when fewer than 12 remain (5.8 %).
 - It does **not** process the raw melt pool video (NIST did that).
 - It does **not** run in real time or control a printer.
 - Results do **not** carry over to other machines, materials or factories
@@ -324,3 +394,5 @@ the segment is at a surface), so someone can go and look at that exact spot.
 ## License
 
 Code: MIT. The NIST data has its own terms; see the NIST pages above.
+
+Developed with AI assistance (Claude).
