@@ -120,6 +120,12 @@ def test_label_segments():
     assert out["is_overhang"].tolist() == [False, True]
     assert out["xct_defect"].tolist() == [False, True]
     assert out["is_injected"].tolist() == [False, True]
+    assert out["partial_fault"].tolist() == [False, False]
+    # 1 or 2 fault frames: neither faulty nor normal
+    df2 = df.assign(n_fault=[2, 1])
+    out2 = label_segments(df2, min_fault_points=3)
+    assert out2["is_injected"].tolist() == [False, False]
+    assert out2["partial_fault"].tolist() == [True, True]
     # surface segments get no XCT label
     df["edge_frac"] = [0.0, 0.9]
     out = label_segments(df, xct_thr=30000.0)

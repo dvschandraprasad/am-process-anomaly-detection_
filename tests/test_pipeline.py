@@ -60,6 +60,14 @@ def test_full_run_writes_tables_figures_and_traceability(data_dir, tmp_path):
                  "figures/layer_heatmap_layer1.png"):
         assert (out / name).exists(), name
 
+    # segments with only a few fault frames are neither positives nor negatives
+    inj = pd.read_parquet(out / "scores_test_injected.parquet")
+    metrics = pd.read_csv(out / "metrics_injected.csv")
+    used = ~inj["partial_fault"] & ~inj["xct_defect"]
+    assert inj["partial_fault"].any()
+    assert (metrics["n_pos"] + metrics["n_neg"] == used.sum()).all()
+    assert (metrics["n_pos"] == inj["is_injected"].sum()).all()
+
     trace = pd.read_csv(out / "traceability.csv")
     assert {"part", "layer", "x", "y", "z", "flagged_by", "n_methods"} <= set(trace.columns)
     assert (trace["part"] == 3).all()            # only the test part is reported

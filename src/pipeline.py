@@ -158,7 +158,8 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
     n_test_layers = seg_test.df.groupby("part")["layer"].nunique().sum()
     log(f"segments: train {len(seg_train):,} ({train_ok.sum():,} normal), val {len(seg_val):,}, "
         f"test {len(seg_test):,}; injected faults: {len(events)} "
-        f"({int(seg_inj.df['is_injected'].sum())} faulty segments)")
+        f"({int(seg_inj.df['is_injected'].sum())} faulty segments, "
+        f"{int(seg_inj.df['partial_fault'].sum())} with only a few fault frames left out)")
 
     # Fixed limits get every summary feature of the melt pool signals (mean, std,
     # min, max, slope, jitter), like the other methods. "limits_levels" is an
@@ -178,7 +179,9 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
 
     inj_df, test_df = seg_inj.df, seg_test.df
     per_region = bool(sg["geometry_context"])
-    inj_mask = ~inj_df["xct_defect"].to_numpy()          # real pores are not "normal"
+    # left out of the evaluation: real pores (not "normal") and segments with
+    # only a few fault frames (neither clearly faulty nor clearly normal)
+    inj_mask = ~inj_df["xct_defect"].to_numpy() & ~inj_df["partial_fault"].to_numpy()
     y_inj = inj_df["is_injected"].to_numpy()
     xct_mask = test_df["xct_valid"].to_numpy()
     y_xct = test_df["xct_defect"].to_numpy()
@@ -264,6 +267,10 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
           f"{cfg['threshold']['target_frr']:.1%} of normal segments are flagged "
           "(except the 3-sigma rule, which is fixed).", "",
           "## Injected faults (test set)", "",
+          f"{int(y_inj[inj_mask].sum())} faulty and {int((~y_inj[inj_mask]).sum())} normal segments. "
+          f"Left out: {int(inj_df['partial_fault'].sum())} segments with only a few fault frames "
+          f"(fewer than {cfg['inject']['min_fault_points']}) and "
+          f"{int(inj_df['xct_defect'].sum())} segments with an XCT pore.", "",
           to_markdown(summary_inj,
                       {"precision": "Precision", "recall": "Recall", "f1": "F1",
                        "frr": "False rejection rate", "pr_auc": "PR-AUC",
@@ -278,7 +285,12 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
             detection_rate=("detection_rate", "mean"), n_faults=("n_faults", "first")).reset_index()
         fault_types.to_csv(out_dir / "fault_types.csv", index=False)
         wide = fault_types.pivot_table(index="method", columns="fault_type", values="detection_rate", sort=False)
+        n_kind = fault_types.groupby("fault_type", sort=False)["n_faults"].first()
         md += ["## Share of injected faults caught, by kind", "",
+               f"Over the {int(n_kind.sum())} of {len(events)} injected faults that have at least one "
+               f"labelled segment (at least {cfg['inject']['min_fault_points']} fault frames in one "
+               "segment): " + ", ".join(f"{k} {int(v)}" for k, v in n_kind.items()) + ". "
+               "A fault counts as caught if one of its labelled segments is flagged.", "",
                "| Method | " + " | ".join(wide.columns) + " |", "|---|" + "---:|" * len(wide.columns)]
         md += [f"| {LABELS.get(m, m)} | " + " | ".join(f"{v:.0%}" for v in r) + " |" for m, r in
                zip(wide.index, wide.to_numpy())]

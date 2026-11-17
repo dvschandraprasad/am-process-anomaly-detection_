@@ -181,7 +181,9 @@ def label_segments(
                   metal and air, so it cannot be trusted as a pore label)
                   and for segments without an XCT value. Uses
                   `xct_surface_frac` if it is there, else `edge_frac`.
-    is_injected   the segment holds an injected fault
+    is_injected   the segment holds an injected fault (at least
+                  `min_fault_points` fault frames)
+    partial_fault the segment holds 1 to `min_fault_points` - 1 fault frames
     """
     df = seg_df.copy()
     if "solid_below" in df:
@@ -209,6 +211,10 @@ def label_segments(
 
     if "n_fault" in df:
         df["is_injected"] = df["n_fault"] >= min_fault_points
+        # only a few fault frames: neither clearly faulty nor normal, so these
+        # segments are left out of the evaluation
+        df["partial_fault"] = (df["n_fault"] > 0) & ~df["is_injected"]
     else:
         df["is_injected"] = False
+        df["partial_fault"] = False
     return df
