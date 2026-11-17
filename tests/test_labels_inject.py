@@ -3,7 +3,7 @@ import pandas as pd
 
 from src.features import make_segments
 from src.inject import FAULT_TYPES, inject_faults
-from src.labels import add_geometry, label_segments, xct_threshold
+from src.labels import add_geometry, add_xct_surface, label_segments, xct_threshold
 
 SIGNALS = ["mp_length_100", "mp_width_100", "mp_area_100"]
 
@@ -34,6 +34,21 @@ def test_solid_below_sees_the_overhang():
     mid = (out["x"].between(0.3, 0.7)) & (out["y"].between(0.3, 0.7))
     assert not out.loc[mid, "is_edge"].any()
     assert out.loc[out["x"] < 0.2, "is_edge"].all()
+
+
+def test_xct_surface_marks_sides_top_and_start_of_scan():
+    # a 2 x 1 mm block, 10 layers of 0.02 mm; the XCT scan starts at layer 3
+    points = pd.concat([grid_layer(l, 2.0, step=0.05) for l in range(1, 11)], ignore_index=True)
+    points["xct_m3"] = np.where(points["layer"] >= 3, 0.54, np.nan)
+    out = add_xct_surface(points, "xct_m3", layer_thickness_mm=0.02, cell_mm=0.1,
+                          xy_mm=0.2, z_mm=0.04)
+    s = out["xct_surface"]
+    middle = out["x"].between(0.45, 1.55) & out["y"].between(0.35, 0.65)
+    assert s[out["layer"] <= 2].all()                      # no XCT value
+    assert s[out["layer"].isin([3, 4])].all()              # just above the start of the scan
+    assert s[out["layer"].isin([9, 10])].all()             # just below the top face
+    assert not s[middle & out["layer"].between(5, 8)].any()
+    assert s[out["layer"].between(5, 8) & (out["x"] < 0.15)].all()   # side face
 
 
 def test_xct_threshold_sits_between_metal_and_pores():

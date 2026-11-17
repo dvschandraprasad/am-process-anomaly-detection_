@@ -116,7 +116,8 @@ def make_segments(
     Extra columns are summarised if they exist:
       solid_below -> mean          (how much metal is under the segment)
       is_edge     -> edge_frac     (share of points at the part surface)
-      xct column  -> xct_min, xct_max
+      xct column  -> xct_min, xct_max (without points marked `xct_surface`)
+      xct_surface -> xct_surface_frac
       fault_id    -> n_fault, fault_id   (injected faults)
 
     geometry_context=True also gives `solid_below` to the detectors as an
@@ -179,8 +180,16 @@ def make_segments(
     if "is_edge" in points.columns:
         df["edge_frac"] = col("is_edge").astype(np.float32).mean(axis=1)
     if xct_column and xct_column in points.columns:
-        v = col(xct_column)
-        df["xct_min"], df["xct_max"] = v.min(axis=1), v.max(axis=1)
+        v = col(xct_column).astype(np.float64)
+        if "xct_surface" in points.columns:
+            # only XCT values away from the part surface count (see labels.add_xct_surface)
+            surf = col("xct_surface").astype(bool)
+            df["xct_surface_frac"] = surf.mean(axis=1)
+            v = np.where(surf, np.nan, v)
+        inner = np.isfinite(v)
+        some = inner.any(axis=1)
+        df["xct_min"] = np.where(some, np.where(inner, v, np.inf).min(axis=1), np.nan)
+        df["xct_max"] = np.where(some, np.where(inner, v, -np.inf).max(axis=1), np.nan)
     if "fault_id" in points.columns:
         f = col("fault_id")
         df["n_fault"] = (f >= 0).sum(axis=1)

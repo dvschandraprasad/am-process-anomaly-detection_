@@ -73,6 +73,75 @@ def add_geometry(
 
 # --------------------------------------------------------------------- XCT --
 
+def add_xct_surface(
+    points: pd.DataFrame,
+    xct_column: str,
+    layer_thickness_mm: float,
+    cell_mm: float = 0.25,
+    xy_mm: float = 0.5,
+    z_mm: float = 0.06,
+) -> pd.DataFrame:
+    """Add `xct_surface`: points where the XCT value is no good as a pore label.
+
+    Near any surface of the part an XCT voxel holds metal and air (or powder),
+    so its value is low and looks like a pore. In the real NIST data almost
+    all low XCT values sit at such places (see docs/data_notes.md). A point is
+    marked if
+      * side:   a cell within `xy_mm` in the same layer has no XCT value
+                (outside of the part, or a hole)
+      * top / bottom: a cell next to it has no XCT value in one of the layers
+                within `z_mm` above or below it (top face, face over powder,
+                lowest layers of the XCT scan)
+      * it has no XCT value itself.
+    Above the last loaded layer counts as air (so the last layers of a partial
+    load are marked too). Below the first loaded layer counts as metal, like
+    in `add_geometry`.
+    """
+    points = points.copy()
+    surface = np.ones(len(points), dtype=bool)
+    if xct_column not in points:
+        points["xct_surface"] = surface
+        return points
+    r_xy = max(1, int(round(xy_mm / cell_mm)))
+    n_z = max(1, int(round(z_mm / layer_thickness_mm)))
+
+    def all_cells(occ: np.ndarray, r: int) -> np.ndarray:
+        """True where every cell in the (2r+1) x (2r+1) square around has a value."""
+        _, nx, ny = occ.shape
+        padded = np.pad(occ, ((0, 0), (r, r), (r, r)), constant_values=False)
+        out = np.ones_like(occ)
+        for dx in range(-r, r + 1):
+            for dy in range(-r, r + 1):
+                out &= padded[:, r + dx: r + dx + nx, r + dy: r + dy + ny]
+        return out
+
+    for _, rows in points.groupby("part", sort=False).indices.items():
+        sub = points.iloc[rows]
+        x, y = sub["x"].to_numpy(), sub["y"].to_numpy()
+        ix = np.floor((x - x.min()) / cell_mm).astype(np.int64)
+        iy = np.floor((y - y.min()) / cell_mm).astype(np.int64)
+        layers, pos = np.unique(sub["layer"].to_numpy(), return_inverse=True)
+        has = np.isfinite(sub[xct_column].to_numpy())
+        grid = np.zeros((len(layers), ix.max() + 1, iy.max() + 1), dtype=bool)
+        grid[pos[has], ix[has], iy[has]] = True
+
+        side = ~all_cells(grid, r_xy)[pos, ix, iy]
+        near = all_cells(grid, 1)
+        vertical = np.zeros(len(rows), dtype=bool)
+        for k in range(1, n_z + 1):
+            up = pos + k
+            ok = up < len(layers)
+            vertical |= ~ok  # nothing loaded above: count as air
+            vertical[ok] |= ~near[up[ok], ix[ok], iy[ok]]
+            down = pos - k
+            ok = down >= 0   # nothing loaded below: count as metal
+            vertical[ok] |= ~near[down[ok], ix[ok], iy[ok]]
+        surface[rows] = side | vertical | ~has
+
+    points["xct_surface"] = surface
+    return points
+
+
 def xct_threshold(values: np.ndarray, pore_is: str = "low", k: float = 6.0) -> float:
     """Pick the XCT value beyond which a voxel counts as a pore.
 
@@ -102,7 +171,8 @@ def label_segments(
     xct_defect    XCT shows a pore inside the segment
     xct_valid     False for segments at the part surface (XCT there mixes
                   metal and air, so it cannot be trusted as a pore label)
-                  and for segments without an XCT value
+                  and for segments without an XCT value. Uses
+                  `xct_surface_frac` if it is there, else `edge_frac`.
     is_injected   the segment holds an injected fault
     """
     df = seg_df.copy()
@@ -116,7 +186,9 @@ def label_segments(
             df["xct_defect"] = df["xct_min"] < xct_thr
         else:
             df["xct_defect"] = df["xct_max"] > xct_thr
-        if ignore_edge and "edge_frac" in df:
+        if ignore_edge and "xct_surface_frac" in df:
+            df["xct_valid"] = df["xct_surface_frac"] < 0.5
+        elif ignore_edge and "edge_frac" in df:
             df["xct_valid"] = df["edge_frac"] < 0.5
         else:
             df["xct_valid"] = True

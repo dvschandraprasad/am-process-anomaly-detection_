@@ -24,7 +24,7 @@ from .evaluate import (detection_metrics, event_detection, pr_curve, ranking_met
                        summarise, threshold_for_frr, to_markdown)
 from .features import Segments, make_segments
 from .inject import inject_faults
-from .labels import add_geometry, label_segments, xct_threshold
+from .labels import add_geometry, add_xct_surface, label_segments, xct_threshold
 from .load import load_part_cached
 from .models import HAS_TORCH, LABELS, RANDOM_METHODS, build_detector
 
@@ -39,12 +39,16 @@ def log(message: str) -> None:
 
 def prepare_points(cfg: dict) -> dict[int, pd.DataFrame]:
     """Load every part named in the config and add the geometry columns."""
-    data, lab = cfg["data"], cfg["labels"]["overhang"]
+    data, lab, xc = cfg["data"], cfg["labels"]["overhang"], cfg["labels"]["xct"]
     parts = {}
     for part, path in sorted(data["parts"].items()):
         points = load_part_cached(path, part, data["cache_dir"], data["layers"],
                                   data["columns"], data["layer_thickness_mm"])
-        parts[part] = add_geometry(points, data["layer_thickness_mm"], lab["cell_mm"], lab["cap_mm"])
+        points = add_geometry(points, data["layer_thickness_mm"], lab["cell_mm"], lab["cap_mm"])
+        if xc["enabled"] and xc["ignore_edge"] and xc["column"] in points:
+            points = add_xct_surface(points, xc["column"], data["layer_thickness_mm"], lab["cell_mm"],
+                                     xc["surface_xy_mm"], xc["surface_z_mm"])
+        parts[part] = points
         log(f"part {part}: {len(points):,} points, layers {points['layer'].min()}-{points['layer'].max()}")
     return parts
 
@@ -128,7 +132,8 @@ def run(cfg: dict, make_figures: bool = True) -> dict:
     xct_thr = None
     if xc["enabled"] and xc["column"] in sets["train"].columns:
         if xc["threshold"] == "auto":
-            inner = sets["train"].loc[~sets["train"]["is_edge"], xc["column"]].to_numpy()
+            surface = "xct_surface" if "xct_surface" in sets["train"] else "is_edge"
+            inner = sets["train"].loc[~sets["train"][surface], xc["column"]].to_numpy()
             xct_thr = xct_threshold(inner, xc["pore_is"], xc["k"])
         else:
             xct_thr = float(xc["threshold"])
