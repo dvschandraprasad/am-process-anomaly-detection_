@@ -88,3 +88,17 @@ def test_sample_data_in_the_repo_runs(tmp_path):
     res = run(cfg, make_figures=False)
     assert len(res["summary_injected"]) == 3
 
+
+def test_extra_numbers_script_reads_a_run(data_dir, tmp_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("extra_numbers", REPO / "scripts" / "extra_numbers.py")
+    extra = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(extra)
+
+    cfg = small_config(data_dir, tmp_path / "out", methods=["limits", "iforest"], seeds=[0])
+    res = run(cfg, make_figures=False)
+    data = "\n".join(extra.data_numbers(cfg))
+    assert "| tracks |" in data and "Part 3" in data
+    text = "\n".join(extra.result_numbers(tmp_path / "out"))
+    assert f"rows in traceability.csv: {len(res['traceability'])}" in text
+    assert "Inside each layer" in text

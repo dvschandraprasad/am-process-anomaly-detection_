@@ -25,3 +25,5 @@ jobs:
         run: pytest -q
       - name: Whole pipeline on the sample data
         run: python scripts/run_pipeline.py --config configs/sample.yaml
+      - name: Extra numbers on the sample run
+        run: python scripts/extra_numbers.py --config configs/sample.yaml
