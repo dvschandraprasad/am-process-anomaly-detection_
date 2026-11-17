@@ -6,6 +6,15 @@
 
 This run answers one question: **does the code work on the real files?** Yes.
 It is **not** the final result. It uses 21 of 1000 layer files, from one part.
+The full run on all four parts is in the [README](../README.md#results) and
+the [report](report.md).
+
+> **Note (17 November 2026).** The numbers on this page were made with the
+> code of 16 November. Two later fixes change them a little: frames with the
+> same time stamp no longer start a new track, and XCT labels now leave out
+> all surfaces (not only side cells). Run again with the new code, this
+> check gives 3 572 training segments instead of 3 568 and an XCT threshold
+> of 0.484 instead of 0.471. The findings below stay the same.
 
 ## How to repeat it
 

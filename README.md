@@ -6,10 +6,10 @@ that are **not** normal, and check them against X-ray CT.
 
 ![tests](https://github.com/dvschandraprasad/am-process-anomaly-detection/actions/workflows/tests.yml/badge.svg)
 
-> **Status.** The code runs on the real NIST files. So far it has been run on
-> a small piece of the real data only: part 1, layers 120 to 140
-> ([first real data check](docs/first_real_data_check.md)). The full run on
-> all four parts is still to do. See [Results](#results).
+> **Status.** The full run on all four real NIST parts is done (17 November
+> 2026): train on parts 1 and 2, set the alarm level on part 3, test on
+> part 4. See [Results](#results). The short report is in
+> [`docs/report.md`](docs/report.md).
 
 ## The question
 
@@ -64,7 +64,8 @@ Column list and open questions: [`docs/data_notes.md`](docs/data_notes.md).
 ### Rules for a fair comparison
 
 - All methods use the same train / validation / test parts.
-- Training uses **normal segments only** (segments with an XCT pore are removed).
+- Training uses **normal segments only** (segments with an XCT pore are
+  removed; in the full NIST run there were none).
 - The alarm level of each method is set on the **validation part** so that 1 %
   of normal validation segments are flagged. The test part is never used for
   tuning. A test checks this (`tests/test_pipeline.py`).
@@ -75,7 +76,7 @@ Column list and open questions: [`docs/data_notes.md`](docs/data_notes.md).
 | Label | Meaning | Use |
 |---|---|---|
 | Injected faults | Spikes, drops, drifts and noise bursts added to normal test signals. Place and size are known exactly. | Main numbers |
-| XCT pores | The X-ray CT value at the segment says "pore" | Check against real defects |
+| XCT pores | The X-ray CT value at the segment says "pore". Points near any surface of the part are left out (there XCT mixes metal and air). | Check against real defects |
 | Overhang region | Less than 0.5 mm solid metal below the segment | Shows where false rejections come from. **Not** a defect. |
 
 ## Quick start (fake sample data, about 15 seconds)
@@ -106,8 +107,9 @@ python scripts/inspect_data.py data/raw/part1
 # 2. First run with one part (split by blocks of layers)
 python scripts/run_pipeline.py --config configs/nist_x4_one_part.yaml
 
-# 3. Download the rest and do the real run (split by part)
+# 3. Download the rest, look at the XCT values, and do the real run (split by part)
 python scripts/download_data.py --parts 2 3 4
+python scripts/check_xct.py --config configs/nist_x4.yaml
 python scripts/run_pipeline.py --config configs/nist_x4.yaml
 ```
 
@@ -115,28 +117,140 @@ Before step 2, read the output of `inspect_data.py` and check the open points
 in [`docs/data_notes.md`](docs/data_notes.md), most of all the XCT pore
 threshold.
 
+The NIST zip files unpack one folder deeper (`data/raw/part1/part01/L0001.csv`).
+The loader searches all sub-folders, so `data/raw/part1` in the config works.
+
+The full run takes about 3 minutes on a laptop with 2 CPU cores and needs
+about 3 GB of memory. Reading the CSV files the first time adds about
+20 seconds; after that a Parquet copy in `data/processed/` is used.
+
 Then look at the data yourself in `notebooks/01_explore.ipynb` and at the
 results in `notebooks/02_results.ipynb`.
 
 ## Results
 
-**First check on real data** (part 1, layers 120 to 140, split by blocks of
-layers): see [`docs/first_real_data_check.md`](docs/first_real_data_check.md).
-It shows that the code works on the real files. It is too small to be the
-final result.
+**Full run on the real NIST data** (`configs/nist_x4.yaml`, 17 November 2026).
 
-**To do: run on all four parts and fill in this section.**
+| | |
+|---|---|
+| Train | parts 1 and 2: 176 756 segments |
+| Validation (sets the alarm level) | part 3: 88 378 segments |
+| Test | part 4: 88 378 segments |
+| Injected faults in the test part | 594 faults, 1 362 faulty segments (1.5 % of test segments) |
+| Seeds | 3 for methods with randomness; tables show mean ± std |
 
-1. Run `configs/nist_x4.yaml` (see above).
-2. Paste the tables from `results/nist_x4/results.md` here.
-3. Copy `pr_curves.png`, `layer_heatmap.png` and `frr_by_region.png` from
-   `results/nist_x4/figures/` to `docs/images/` and show them here.
-4. Write 3 to 5 sentences: which method had the lowest false rejection rate,
-   which faults were missed, and how well the alarms match the XCT pores.
+The alarm level of every method is set on part 3 so that 1 % of its normal
+segments are flagged. Only the 3-sigma rule keeps its fixed level.
+
+### Injected faults (test part 4)
+
+| Method | Precision | Recall | F1 | False rejection rate | PR-AUC | FRR at 90 % recall | Run time [ms/layer] |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Fixed limits (3-sigma rule) | 0.118 | 0.789 | 0.206 | 9.2 % | 0.334 | 37.7 % | 0.060 |
+| Fixed limits (tuned k) | 0.341 | 0.522 | 0.413 | 1.6 % | 0.334 | 37.7 % | 0.091 |
+| Isolation Forest | 0.407 ± 0.005 | 0.519 ± 0.016 | 0.456 ± 0.009 | 1.2 ± 0.0 % | 0.432 ± 0.025 | 36.8 ± 1.3 % | 2.310 ± 0.148 |
+| Local Outlier Factor | 0.348 ± 0.005 | 0.686 ± 0.005 | 0.462 ± 0.003 | 2.0 ± 0.1 % | 0.626 ± 0.003 | 30.7 ± 0.2 % | 11.338 ± 0.196 |
+| One-Class SVM | 0.391 ± 0.008 | 0.656 ± 0.007 | 0.489 ± 0.005 | 1.6 ± 0.1 % | 0.609 ± 0.006 | 32.5 ± 3.3 % | 2.276 ± 0.151 |
+| Conv. autoencoder | 0.304 ± 0.018 | 0.306 ± 0.022 | 0.305 ± 0.020 | 1.1 ± 0.0 % | 0.287 ± 0.018 | 62.7 ± 1.6 % | 0.480 ± 0.053 |
+
+Precision looks low for every method because faulty segments are rare
+(1.5 %). A method that guesses at random gets a PR-AUC of about 0.015.
+Run time is the time to score the test part, per layer, on 2 CPU cores.
+
+![Precision-recall curves, full run](docs/images/full_pr_curves.png)
+
+**Share of injected faults caught, by kind**
+
+| Method | drift | drop | noise | spike |
+|---|---:|---:|---:|---:|
+| Fixed limits (3-sigma rule) | 99 % | 100 % | 100 % | 98 % |
+| Fixed limits (tuned k) | 68 % | 94 % | 94 % | 67 % |
+| Isolation Forest | 36 % | 92 % | 100 % | 90 % |
+| Local Outlier Factor | 86 % | 100 % | 100 % | 96 % |
+| One-Class SVM | 84 % | 99 % | 100 % | 98 % |
+| Conv. autoencoder | 8 % | 30 % | 100 % | 16 % |
+
+**False rejections by region** (normal test segments: 83 626 with solid
+metal below, 3 390 in the overhang region)
+
+| Method | Solid metal below | Overhang region |
+|---|---:|---:|
+| Fixed limits (3-sigma rule) | 9.3 % | 7.4 % |
+| Fixed limits (tuned k) | 1.6 % | 1.0 % |
+| Isolation Forest | 0.5 ± 0.0 % | 18.8 ± 0.6 % |
+| Local Outlier Factor | 1.9 ± 0.1 % | 4.3 ± 0.3 % |
+| One-Class SVM | 1.3 ± 0.1 % | 9.1 ± 0.1 % |
+| Conv. autoencoder | 1.1 ± 0.0 % | 2.0 ± 0.2 % |
+
+![False rejections by region, full run](docs/images/full_frr_by_region.png)
+
+### X-ray CT
+
+**No pores were found.** Away from the part surface, no XCT value in any of
+the four parts is below the pore threshold (0.479 in this run). Low XCT
+values do exist, but all of them sit at a surface: the lowest layers of the
+XCT scan, the top layers, top faces, and side faces
+([details](docs/data_notes.md#xct-on-the-full-parts)). So precision and
+recall against real pores **cannot be given**.
+
+![XCT values per part](docs/images/full_xct_histogram.png)
+
+What can be measured is the rank correlation between the anomaly score and
+the XCT value, on the 47 838 test segments away from the surface:
+
+| Method | Rank correlation |
+|---|---:|
+| Fixed limits (tuned k) | −0.143 |
+| Isolation Forest | −0.160 ± 0.005 |
+| Local Outlier Factor | −0.092 ± 0.003 |
+| One-Class SVM | −0.001 ± 0.005 |
+| Conv. autoencoder | −0.048 ± 0.001 |
+
+The link is weak. Part of it comes from slow changes up the part, not from
+single spots (see [the report](docs/report.md#5-what-the-results-mean)).
+
+### What the results say
+
+- Local Outlier Factor and One-Class SVM catch the most injected faults
+  (recall 0.69 and 0.66, PR-AUC 0.63 and 0.61) while flagging 2.0 % and
+  1.6 % of normal segments. Tuned fixed limits reach recall 0.52 and
+  PR-AUC 0.33 at 1.6 %.
+- To catch 90 % of the faulty segments, every method except the
+  autoencoder must flag about a third of the normal segments (30.7 to
+  37.7 %). So the learned methods help most at low alarm rates.
+- The 3-sigma rule catches 79 % of the faulty segments, but it flags 9.2 %
+  of the normal ones.
+- The alarm level was set for 1 % on part 3. On part 4 the tuned methods
+  flag 1.1 to 2.0 % of normal segments. So an alarm level carries over to
+  a new part only roughly.
+- Slow drifts are the hardest kind for most methods. The autoencoder is the
+  weakest method here (PR-AUC 0.29).
+- Isolation Forest and One-Class SVM give many false rejections in the
+  overhang region (18.8 % and 9.1 %). The fixed limits, which are set per
+  region, give 1.0 % there.
+- Many alarms on the clean test part are in layer 1, the first layer on the
+  build plate (325 of 3 915 flagged segments). Its melt pool is bigger than
+  in the layers above. The layer heatmap below shows this layer.
+
+![Layer 1 of the test part, Local Outlier Factor](docs/images/full_layer_heatmap.png)
+
+### What the results do not show
+
+- **One test part.** Every number comes from part 4 only. There is no
+  spread over test parts.
+- **Injected faults are synthetic.** They show that a method reacts to that
+  kind of signal change. They are not real defects.
+- **Nothing about real pores.** The XCT shows no pores away from the
+  surface, so finding real defects is not tested here.
+- The overhang region is "different", not "defective".
+
+**Earlier small check** (part 1, layers 120 to 140, split by blocks of
+layers, made before the full run): see
+[`docs/first_real_data_check.md`](docs/first_real_data_check.md).
 
 Every flagged segment is listed in `traceability.csv` with part, layer,
-x / y / z, time, the methods that flagged it and the XCT value, so someone can
-go and look at that exact spot.
+x / y / z, time, the methods that flagged it and the XCT value (empty when
+the segment is at a surface), so someone can go and look at that exact spot.
 
 ## What this project can and cannot claim
 
@@ -144,12 +258,14 @@ go and look at that exact spot.
   material and one part shape.
 - Injected faults are **synthetic**. Good numbers on them show that a method
   reacts to that kind of signal change. They do not prove it finds real defects.
-- XCT labels are real, but pores are rare and tiny, and lining up XCT with
-  the laser position has an uncertainty of about one voxel (10 µm). The pore
-  threshold is our own choice.
+- XCT labels are real, but lining up XCT with the laser position has an
+  uncertainty of about one voxel (10 µm), and the pore threshold is our own
+  choice. In the four NIST parts no pore was found away from the surface.
+  Points near a surface are left out, so pores close to a surface cannot be
+  seen with this method.
 - The overhang region is "different", not "defective".
 - Tracks shorter than 13 frames get no score. In the real data these are the
-  short scan lines across thin walls (about 6 % of all frames in layers 120 to 140).
+  short scan lines across thin walls (3.2 % of all frames in each full part).
 - It does **not** process the raw melt pool video (NIST did that).
 - It does **not** run in real time or control a printer.
 - Results do **not** carry over to other machines, materials or factories
@@ -165,9 +281,10 @@ go and look at that exact spot.
 ├── docs/
 │   ├── data_notes.md   what is in the data, and what to check
 │   ├── first_real_data_check.md   first run on 21 real layers
-│   └── report.md       short report with recommendations
+│   ├── images/         figures shown in the docs (full_* = full run)
+│   └── report.md       short report with results and recommendations
 ├── notebooks/          01_explore, 02_results
-├── scripts/            download_data, inspect_data, run_pipeline, make_sample_data
+├── scripts/            download_data, inspect_data, check_xct, run_pipeline, make_sample_data
 ├── src/
 │   ├── load.py         read the NIST files
 │   ├── features.py     tracks, segments, features
